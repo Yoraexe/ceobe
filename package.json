@@ -1,6 +1,6 @@
 {
-  "name": "ceobe-ai-cli",
-  "version": "1.0.0",
+  "name": "ceobe-mastery-cli",
+  "version": "1.0.2",
   "main": "dist/index.js",
   "bin": {
     "ceobe": "./dist/index.js"
@@ -16,10 +16,21 @@
     "build": "tsc",
     "start": "ts-node src/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "ai",
+    "cli",
+    "agent",
+    "gemini",
+    "claude",
+    "engineering"
+  ],
+  "author": "Yoragam1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yoraexe/ceobe.git"
+  },
+  "description": "An autonomous AI Engineering orchestrator driven by Gemini and Claude.",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@google/genai": "^1.45.0",
