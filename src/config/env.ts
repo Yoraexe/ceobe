@@ -11,7 +11,7 @@ export interface EnvConfig {
   CLOUDFLARE_GATEWAY_ID: string;
   GEMINI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
-  CEOEBE_INSTALL_DIR: string;
+  CEOBE_INSTALL_DIR: string;
   TARGET_PROJECT_DIR: string;
 }
 
@@ -33,7 +33,7 @@ export function loadEnv(): EnvConfig {
     GEMINI_API_KEY: getEnv('GEMINI_API_KEY'),
     ANTHROPIC_API_KEY: getEnv('ANTHROPIC_API_KEY'),
     // The location of Ceobe's brain (skills, templates, rules)
-    CEOEBE_INSTALL_DIR: process.env.CEOEBE_INSTALL_DIR || path.resolve(__dirname, '../../'),
+    CEOBE_INSTALL_DIR: process.env.CEOBE_INSTALL_DIR || path.resolve(__dirname, '../../'),
     // The user's current terminal directory where code is written
     TARGET_PROJECT_DIR: process.cwd(),
   };

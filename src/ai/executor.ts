@@ -4,6 +4,7 @@ import { getGatewayUrl } from './gateway';
 import chalk from 'chalk';
 import ora from 'ora';
 import { tools, handleToolCall } from './tools/systemTools';
+import { withRetry } from '../utils/retry';
 
 export async function executePlan(planMarkdown: string): Promise<void> {
   const spinner = ora('Claude 4.6 Sonnet is executing the plan...').start();
@@ -31,14 +32,14 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
     let isThinking = true;
     while (isThinking) {
-      const msg = await anthropic.messages.create({
+      const msg = await withRetry(() => anthropic.messages.create({
         model: "claude-4.6-sonnet",
-        max_tokens: 4096,
+        max_tokens: 8192,
         temperature: 0,
         system: systemInstruction,
         messages: messages,
         tools: tools as any // Type bypass for SDK version compatibility,
-      });
+      }));
 
       // Log the assistant's text reasoning before the tool call
       const textBlock = msg.content.find(c => c.type === 'text');

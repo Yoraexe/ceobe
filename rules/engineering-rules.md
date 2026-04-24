@@ -1,4 +1,4 @@
-# Eyjafjalla Engineering Rules
+# Ceobe Engineering Rules
 
 These rules define global engineering constraints that AI agents must follow when implementing software.
 
@@ -212,3 +212,39 @@ All AI agents managing this project MUST:
 2. NEVER hallucinate imports or dependencies; always check the `package.json` or equivalent first.
 3. FOLLOW exact file paths provided in the task capsule.
 4. PREFER precise string replacements over full file replacements for minor edits.
+
+---
+
+# 14. Mandatory File Header Documentation
+
+Every source code file must contain a standardized Header Doc comment at the top.
+Format must include:
+- Module Name & Purpose
+- Caller (Who consumes this file?)
+- Dependencies (What does this file call?)
+- Important Side Effects
+
+---
+
+# 15. Token Efficiency & Navigation Protocol
+
+Do not perform blind codebase scans.
+Before working on an existing codebase, always read or generate `system-map.md`.
+Use trace-by-function to navigate. Do not read entire files if only a specific function is needed.
+
+---
+
+# 16. Database Performance Standards (DBA-Grade)
+
+All database queries must be optimized for production scale:
+- NEVER use unbounded `SELECT *`. Always select specific columns.
+- Prevent N+1 query problems by using joins or batch loaders (e.g., Drizzle `with` or dataloaders).
+- Batch inserts for bulk operations.
+
+---
+
+# 17. Pre-Edit Trace Note
+
+Before executing any file modification, the agent must output a brief trace note in its thought process or response:
+"Trace: Trigger -> Controller X -> Service Y -> DB Z. Editing Service Y to add..."
+This ensures logical alignment before code is written.

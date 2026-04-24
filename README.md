@@ -3,7 +3,7 @@
 An autonomous AI Engineering orchestrator CLI powered by Gemini 3.1 Pro (Planner) and Claude 4.6 Sonnet (Executor).
 
 ## Features
-- **4-Phase Architecture:** Plan -> Audit -> Execute -> Build Feature.
+- **5-Phase Architecture:** Plan -> Design -> Engineering -> Quality -> DevOps.
 - **Microservices & Monorepo Ready.**
 - **Human-in-the-Loop:** Intervene and modify Agent plans before a single line of code is written.
 - **Dynamic Skill Routing:** Equipped with 15+ specialized engineering rules (Bun, Next.js, Cloudflare, Security, etc).

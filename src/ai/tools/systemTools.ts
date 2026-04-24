@@ -52,22 +52,57 @@ export const tools = [
       },
       required: ['command']
     }
+  },
+  {
+    name: 'list_directory',
+    description: 'Lists the contents of a directory.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dir_path: {
+          type: 'string',
+          description: 'The path to the directory to list (e.g. ./src)'
+        }
+      },
+      required: ['dir_path']
+    }
+  },
+  {
+    name: 'search_in_files',
+    description: 'Searches for a string pattern in files within a directory using grep/find.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The pattern to search for'
+        },
+        dir_path: {
+          type: 'string',
+          description: 'The directory to search in (e.g. ./src)'
+        }
+      },
+      required: ['query', 'dir_path']
+    }
   }
 ];
 
-// Helper to resolve paths against the workspace root if they are relative
-function resolvePath(filePath: string): string {
-  if (path.isAbsolute(filePath)) {
-    return filePath;
+function validatePath(filePath: string): string {
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(env.TARGET_PROJECT_DIR, filePath);
+  const normalizedPath = path.resolve(fullPath);
+  const workspaceRoot = path.resolve(env.TARGET_PROJECT_DIR);
+  
+  if (!normalizedPath.startsWith(workspaceRoot)) {
+    throw new Error(`Path traversal blocked: ${normalizedPath} is outside the workspace (${workspaceRoot})`);
   }
-  return path.join(env.TARGET_PROJECT_DIR, filePath);
+  return normalizedPath;
 }
 
 export async function handleToolCall(toolName: string, input: any): Promise<string> {
   try {
     switch (toolName) {
       case 'read_file': {
-        const fullPath = resolvePath(input.file_path);
+        const fullPath = validatePath(input.file_path);
         if (!fs.existsSync(fullPath)) {
           return `Error: File not found at ${fullPath}`;
         }
@@ -75,7 +110,7 @@ export async function handleToolCall(toolName: string, input: any): Promise<stri
       }
 
       case 'write_file': {
-        const fullPath = resolvePath(input.file_path);
+        const fullPath = validatePath(input.file_path);
         const dir = path.dirname(fullPath);
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
@@ -85,13 +120,45 @@ export async function handleToolCall(toolName: string, input: any): Promise<stri
       }
 
       case 'execute_command': {
-        // Caution: In a real secure environment, commands must be sandboxed or require user approval.
-        // For this AI engineering system, we allow execution within the workspace context.
-        const { stdout, stderr } = await execAsync(input.command, { cwd: env.TARGET_PROJECT_DIR });
-        let result = '';
-        if (stdout) result += `STDOUT:\n${stdout}\n`;
-        if (stderr) result += `STDERR:\n${stderr}\n`;
-        return result || 'Command executed successfully with no output.';
+        const blacklist = ['rm -rf /', 'mkfs', 'dd ', ':(){:|:&};:'];
+        if (blacklist.some(cmd => input.command.includes(cmd))) {
+          return `Error: Command blocked due to security restrictions.`;
+        }
+        
+        try {
+          const { stdout, stderr } = await execAsync(input.command, { 
+            cwd: env.TARGET_PROJECT_DIR,
+            timeout: 60000 // 60s timeout
+          });
+          let result = '';
+          if (stdout) result += `STDOUT:\n${stdout}\n`;
+          if (stderr) result += `STDERR:\n${stderr}\n`;
+          return result || 'Command executed successfully with no output.';
+        } catch (execErr: any) {
+          return `Command failed:\n${execErr.message}\nSTDOUT:\n${execErr.stdout || ''}\nSTDERR:\n${execErr.stderr || ''}`;
+        }
+      }
+
+      case 'list_directory': {
+        const fullPath = validatePath(input.dir_path);
+        if (!fs.existsSync(fullPath)) return `Error: Directory not found at ${fullPath}`;
+        const files = fs.readdirSync(fullPath);
+        return files.join('\n');
+      }
+
+      case 'search_in_files': {
+        const fullPath = validatePath(input.dir_path);
+        // Sanitize query to prevent shell injection
+        const sanitizedQuery = input.query.replace(/["`$\\!;&|<>(){}]/g, '');
+        if (!sanitizedQuery) {
+          return 'Error: Query contains only special characters and was fully sanitized.';
+        }
+        try {
+          const { stdout } = await execAsync(`grep -rn "${sanitizedQuery}" .`, { cwd: fullPath, timeout: 30000 });
+          return stdout || 'No matches found.';
+        } catch (e: any) {
+           return e.stdout ? e.stdout : 'No matches found or grep not available.';
+        }
       }
 
       default:

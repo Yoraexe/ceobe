@@ -4,12 +4,13 @@ import { getGatewayUrl } from './gateway';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readCeobeRules, readTemplate, getAvailableSkills, readSpecificSkills } from '../utils/contextLoader';
+import { withRetry } from '../utils/retry';
 
 const ai = new GoogleGenAI({
   apiKey: env.GEMINI_API_KEY,
-  // Note: Depending on the exact SDK version/options, 
-  // baseUrl mapping might require custom fetch or specific instantiation config.
-  // Using native fetch or overriding baseUrl here ensures routing via Cloudflare.
+  httpOptions: {
+    baseUrl: getGatewayUrl('google-genai')
+  }
 });
 
 /**
@@ -40,11 +41,11 @@ Example: "cost-reducer, scalability, frontend-design"
 NO markdown, NO greetings, NO extra text.
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.0 } // 0.0 for strict deterministic classification
-    });
+    }));
 
     const output = (response.text || '').trim();
     if (output.toLowerCase() === 'none') {
@@ -86,11 +87,11 @@ YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('brd-template.md')}
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.2 }
-    });
+    }));
 
     spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the BRD.'));
     return response.text || '';
@@ -125,11 +126,11 @@ YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('architecture-template.md')}
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.2 }
-    });
+    }));
 
     spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the Architecture Plan.'));
     return response.text || '';
@@ -164,11 +165,11 @@ YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('tasks-template.md')}
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.2 }
-    });
+    }));
 
     spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the Execution Checklist.'));
     return response.text || '';
@@ -208,11 +209,11 @@ If the plans are 100% solid and ready for execution, reply ABSOLUTELY ONLY with 
 If there are critical conflicts, bugs, or missing steps, reply with a markdown list of the mandatory changes needed. Do NOT say "APPROVED" if there are warnings.
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await withRetry(() => ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.1 }
-    });
+    }));
 
     const output = (response.text || '').trim();
     if (output === 'APPROVED') {
@@ -220,9 +221,9 @@ If there are critical conflicts, bugs, or missing steps, reply with a markdown l
       return true;
     } else {
       spinner.warn(chalk.yellow('Audit FAILED. Conflicts or missing steps detected.'));
-      console.log(chalk.cyan(`\\n--- Auditor Feedback ---\\n`));
+      console.log(chalk.cyan(`\n--- Auditor Feedback ---\n`));
       console.log(output);
-      console.log(chalk.cyan(`\\n-------------------------\\n`));
+      console.log(chalk.cyan(`\n-------------------------\n`));
       return false;
     }
   } catch (error: any) {

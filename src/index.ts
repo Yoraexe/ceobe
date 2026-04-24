@@ -8,13 +8,14 @@ import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplem
 import { executePlan } from './ai/executor';
 import * as fs from 'fs';
 import * as path from 'path';
+import { markPhaseComplete } from './utils/stateManager';
 
 const program = new Command();
 
 program
   .name('ceobe')
   .description('Ceobe CLI: An AI Engineering orchestrator using Gemini 3.1 Pro and Sonnet 4.6 via Cloudflare AI Gateway.')
-  .version('1.0.0');
+  .version('1.1.0');
 
 program
   .command('plan <description>')
@@ -37,6 +38,8 @@ program
 
       const plan = await generateImplementationPlan(arch, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, 'task.md'), plan);
+      
+      markPhaseComplete('plan', 'audit');
       
       console.log(chalk.magenta(`\n[Planning Phase Complete] Documents saved to .ceobe/ folder.`));
       console.log(chalk.yellow(`Please review brd.md, architecture.md, and task.md.`));
@@ -64,6 +67,8 @@ program
       const planContent = fs.readFileSync(taskPath, 'utf8');
       console.log(chalk.magenta(`\n[Execution Phase Started. Firing up Sonnet 4.6]\n`));
       await executePlan(planContent);
+      
+      markPhaseComplete('execute', 'done');
     } catch (err) {
       console.error(chalk.red('\n[Error] Execution failed.'));
       console.error(err);
@@ -103,6 +108,7 @@ ${fs.readFileSync(taskPath, 'utf8')}
       const passed = await auditPlan(combinedContent, selectedSkills);
       
       if (passed) {
+        markPhaseComplete('audit', 'execute');
         console.log(chalk.green(`\nYou are cleared to run: npx ceobe execute ${prefix ? prefix + 'task.md' : ''}\n`));
       } else {
         console.log(chalk.yellow(`\nPlease fix the above issues in your markdown files, then run 'ceobe audit' again.\n`));
@@ -134,6 +140,8 @@ program
 
       const plan = await generateImplementationPlan(arch, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, 'feature-task.md'), plan);
+      
+      markPhaseComplete('build-feature', 'audit');
       
       console.log(chalk.magenta(`\n[Feature Blueprint Complete] Documents saved to .ceobe/ folder.`));
       console.log(chalk.yellow(`Please review feature-brd.md, feature-architecture.md, and feature-task.md.`));

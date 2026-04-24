@@ -32,8 +32,8 @@ export function readCeobeRules(): string {
   try {
     let combinedRules = '';
     
-    const rulesDir = path.join(env.CEOEBE_INSTALL_DIR, 'rules');
-    const docsDir = path.join(env.CEOEBE_INSTALL_DIR, 'docs');
+    const rulesDir = path.join(env.CEOBE_INSTALL_DIR, 'rules');
+    const docsDir = path.join(env.CEOBE_INSTALL_DIR, 'docs');
     
     combinedRules += readAllFromDir(rulesDir);
     combinedRules += readAllFromDir(docsDir);
@@ -50,7 +50,7 @@ export function readCeobeRules(): string {
  */
 export function getAvailableSkills(): string[] {
   try {
-    const skillsDir = path.join(env.CEOEBE_INSTALL_DIR, 'skills');
+    const skillsDir = path.join(env.CEOBE_INSTALL_DIR, 'skills');
     if (!fs.existsSync(skillsDir)) return [];
     
     return fs.readdirSync(skillsDir).filter(item => {
@@ -67,12 +67,12 @@ export function getAvailableSkills(): string[] {
  */
 export function readSpecificSkills(skillNames: string[]): string {
   let content = '';
-  const skillsDir = path.join(env.CEOEBE_INSTALL_DIR, 'skills');
+  const skillsDir = path.join(env.CEOBE_INSTALL_DIR, 'skills');
   
   for (const name of skillNames) {
     const specificSkillDir = path.join(skillsDir, name);
     if (fs.existsSync(specificSkillDir)) {
-      content += `\\n--- SKILL RELEVANT: ${name.toUpperCase()} ---\\n`;
+      content += `\n--- SKILL RELEVANT: ${name.toUpperCase()} ---\n`;
       content += readAllFromDir(specificSkillDir);
     }
   }
@@ -84,7 +84,7 @@ export function readSpecificSkills(skillNames: string[]): string {
  */
 export function readTemplate(templateName: string): string {
   try {
-    const templatePath = path.join(env.CEOEBE_INSTALL_DIR, 'templates', templateName);
+    const templatePath = path.join(env.CEOBE_INSTALL_DIR, 'templates', templateName);
     if (fs.existsSync(templatePath)) {
       return fs.readFileSync(templatePath, 'utf-8');
     }
