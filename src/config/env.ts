@@ -13,6 +13,7 @@ export interface EnvConfig {
   ANTHROPIC_API_KEY: string;
   CEOBE_INSTALL_DIR: string;
   TARGET_PROJECT_DIR: string;
+  CEOBE_SANDBOX: 'docker' | 'none';
 }
 
 export function loadEnv(): EnvConfig {
@@ -36,6 +37,8 @@ export function loadEnv(): EnvConfig {
     CEOBE_INSTALL_DIR: process.env.CEOBE_INSTALL_DIR || path.resolve(__dirname, '../../'),
     // The user's current terminal directory where code is written
     TARGET_PROJECT_DIR: process.cwd(),
+    // Sandbox mode: 'docker' runs commands inside containers, 'none' runs directly on host
+    CEOBE_SANDBOX: (process.env.CEOBE_SANDBOX as 'docker' | 'none') || 'none',
   };
 
   if (missingKeys.length > 0) {

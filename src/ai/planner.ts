@@ -1,17 +1,8 @@
-import { GoogleGenAI } from '@google/genai';
-import { env } from '../config/env';
-import { getGatewayUrl } from './gateway';
+import { getGeminiClient } from './geminiClient';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readCeobeRules, readTemplate, getAvailableSkills, readSpecificSkills } from '../utils/contextLoader';
 import { withRetry } from '../utils/retry';
-
-const ai = new GoogleGenAI({
-  apiKey: env.GEMINI_API_KEY,
-  httpOptions: {
-    baseUrl: getGatewayUrl('google-genai')
-  }
-});
 
 /**
  * PHASE 0: SKILL CLASSIFICATION
@@ -41,7 +32,7 @@ Example: "cost-reducer, scalability, frontend-design"
 NO markdown, NO greetings, NO extra text.
 `;
 
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.0 } // 0.0 for strict deterministic classification
@@ -62,7 +53,7 @@ NO markdown, NO greetings, NO extra text.
   }
 }
 
-export async function generateBRD(taskDescription: string, selectedSkills: string[] = []): Promise<string> {
+export async function generateBRD(taskDescription: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
   const spinner = ora('Gemini 3.1 Pro is analyzing the request and generating a Business Requirements Document...').start();
   
   try {
@@ -83,11 +74,13 @@ ${taskDescription}
 
 Output ONLY the markdown Business Requirements Document (BRD). Do not output greetings or implementation steps yet. Focus on goals, target audience, and feature definitions.
 
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the BRD and fix the issues mentioned above.\n` : ''}
+
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('brd-template.md')}
 `;
 
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.2 }
@@ -101,7 +94,48 @@ ${readTemplate('brd-template.md')}
   }
 }
 
-export async function generateArchitecture(brdContent: string, selectedSkills: string[] = []): Promise<string> {
+export async function generateDesignSpec(brdContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
+  const spinner = ora('Gemini 3.1 Pro is designing the UI/UX & Design System...').start();
+  
+  try {
+    const rules = readCeobeRules();
+    const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
+    
+    const systemInstruction = `
+You are the Design Lead of the Ceobe AI Engineering System.
+STAGE 1.5: UI/UX & DESIGN SYSTEM.
+
+Rules:
+${rules}
+
+${skillsContext}
+
+Current BRD Context:
+${brdContent}
+
+Output ONLY the markdown Design Specification based on the BRD. Outline the color palette, typography, core components, and screen layouts. Do not write full code.
+
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the Design Spec and fix the issues mentioned above.\n` : ''}
+
+YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
+${readTemplate('design-template.md')}
+`;
+
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
+        config: { temperature: 0.3 }
+    }));
+
+    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the Design Spec.'));
+    return response.text || '';
+  } catch (error: any) {
+    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate Design Spec.'));
+    throw error;
+  }
+}
+
+export async function generateArchitecture(brdContent: string, designContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
   const spinner = ora('Gemini 3.1 Pro is designing the System Architecture...').start();
   
   try {
@@ -120,13 +154,18 @@ ${skillsContext}
 Current BRD Context:
 ${brdContent}
 
+Current Design Context:
+${designContent}
+
 Output ONLY the markdown Architecture Document based on the constraints. Outline the tech stack, data schemas, and folder structures. Do not write full code.
+
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the Architecture Plan and fix the issues mentioned above.\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('architecture-template.md')}
 `;
 
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.2 }
@@ -140,7 +179,7 @@ ${readTemplate('architecture-template.md')}
   }
 }
 
-export async function generateImplementationPlan(architectureContent: string, selectedSkills: string[] = []): Promise<string> {
+export async function generateImplementationPlan(architectureContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
   const spinner = ora('Gemini 3.1 Pro is generating the Execution Checklist...').start();
   
   try {
@@ -161,11 +200,13 @@ ${architectureContent}
 
 Output ONLY the markdown execution checklist (a Jira-like task list). Detail what file paths to create/edit and exactly what code Claude should write in each file.
 
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the Task Plan and fix the issues mentioned above.\n` : ''}
+
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('tasks-template.md')}
 `;
 
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.2 }
@@ -179,7 +220,51 @@ ${readTemplate('tasks-template.md')}
   }
 }
 
-export async function auditPlan(combinedContent: string, selectedSkills: string[] = []): Promise<boolean> {
+export async function generateDevOpsConfig(architectureContent: string, taskContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
+  const spinner = ora('Gemini 3.1 Pro is generating the DevOps & Deployment Config...').start();
+  
+  try {
+    const rules = readCeobeRules();
+    const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
+    
+    const systemInstruction = `
+You are the DevOps Lead of the Ceobe AI Engineering System.
+STAGE 5: DEVOPS & INFRASTRUCTURE.
+
+Rules:
+${rules}
+
+${skillsContext}
+
+Current Architecture Plan Context:
+${architectureContent}
+
+Current Task Plan Context:
+${taskContent}
+
+Output ONLY the markdown DevOps Specification. Outline the environment variables, Docker configuration, CI/CD pipeline, and production readiness checklist. Do not write full code.
+
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the DevOps Spec and fix the issues mentioned above.\n` : ''}
+
+YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
+${readTemplate('devops-template.md')}
+`;
+
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
+        config: { temperature: 0.2 }
+    }));
+
+    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the DevOps Spec.'));
+    return response.text || '';
+  } catch (error: any) {
+    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate DevOps Spec.'));
+    throw error;
+  }
+}
+
+export async function auditPlan(combinedContent: string, selectedSkills: string[] = []): Promise<{ passed: boolean, feedback?: string }> {
   const spinner = ora('Gemini 3.1 Pro is auditing the project plans for conflicts and rule violations...').start();
   
   try {
@@ -195,21 +280,21 @@ ${rules}
 
 ${skillsContext}
 
-Below is the combined content of the BRD, Architecture, and Task execution plan that the user has manually reviewed and potentially edited.
+Below is the combined content of the BRD, Design Spec, Architecture, and Task execution plan that the user has manually reviewed and potentially edited.
 
 Combined Content:
 ${combinedContent}
 
 Your Job:
-1. Verify if the Architecture contradicts the BRD.
-2. Verify if the Task List executes everything required by the Architecture.
+1. Verify if the Architecture contradicts the BRD or Design.
+2. Verify if the Task List executes everything required by the Architecture and Design.
 3. Verify if anything in the plans violates the core Ceobe Engineering Rules or the provided Skills constraints (e.g. using npm when bun-developer is active).
 
 If the plans are 100% solid and ready for execution, reply ABSOLUTELY ONLY with the word: "APPROVED".
 If there are critical conflicts, bugs, or missing steps, reply with a markdown list of the mandatory changes needed. Do NOT say "APPROVED" if there are warnings.
 `;
 
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getGeminiClient().models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
         config: { temperature: 0.1 }
@@ -218,13 +303,13 @@ If there are critical conflicts, bugs, or missing steps, reply with a markdown l
     const output = (response.text || '').trim();
     if (output === 'APPROVED') {
       spinner.succeed(chalk.green('Audit PASSED. Project blueprint is solid and ready for execution.'));
-      return true;
+      return { passed: true };
     } else {
       spinner.warn(chalk.yellow('Audit FAILED. Conflicts or missing steps detected.'));
       console.log(chalk.cyan(`\n--- Auditor Feedback ---\n`));
       console.log(output);
       console.log(chalk.cyan(`\n-------------------------\n`));
-      return false;
+      return { passed: false, feedback: output };
     }
   } catch (error: any) {
     spinner.fail(chalk.red('Gemini 3.1 Pro failed to audit the plans.'));

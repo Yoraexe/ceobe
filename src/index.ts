@@ -4,8 +4,10 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 
 import { env } from './config/env';
-import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, auditPlan } from './ai/planner';
+import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, generateDesignSpec, auditPlan } from './ai/planner';
 import { executePlan } from './ai/executor';
+import { runAutonomousLoop } from './ai/supervisor';
+import { indexWorkspace } from './ai/memory/indexer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { markPhaseComplete } from './utils/stateManager';
@@ -33,7 +35,10 @@ program
       const brd = await generateBRD(description, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, 'brd.md'), brd);
 
-      const arch = await generateArchitecture(brd, selectedSkills);
+      const design = await generateDesignSpec(brd, selectedSkills);
+      fs.writeFileSync(path.join(ceobeDir, 'design.md'), design);
+
+      const arch = await generateArchitecture(brd, design, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, 'architecture.md'), arch);
 
       const plan = await generateImplementationPlan(arch, selectedSkills);
@@ -42,7 +47,7 @@ program
       markPhaseComplete('plan', 'audit');
       
       console.log(chalk.magenta(`\n[Planning Phase Complete] Documents saved to .ceobe/ folder.`));
-      console.log(chalk.yellow(`Please review brd.md, architecture.md, and task.md.`));
+      console.log(chalk.yellow(`Please review brd.md, design.md, architecture.md, and task.md.`));
       console.log(chalk.green(`Once approved, run: npx ceobe execute\n`));
     } catch (err) {
       console.error(chalk.red('\n[Error] Project planning failed.'));
@@ -84,6 +89,7 @@ program
     try {
       const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
       const brdPath = path.join(ceobeDir, prefix ? `${prefix}brd.md` : 'brd.md');
+      const designPath = path.join(ceobeDir, prefix ? `${prefix}design.md` : 'design.md');
       const archPath = path.join(ceobeDir, prefix ? `${prefix}architecture.md` : 'architecture.md');
       const taskPath = path.join(ceobeDir, prefix ? `${prefix}task.md` : 'task.md');
 
@@ -95,6 +101,8 @@ program
       const combinedContent = `
 --- BRD ---
 ${fs.readFileSync(brdPath, 'utf8')}
+--- DESIGN ---
+${fs.existsSync(designPath) ? fs.readFileSync(designPath, 'utf8') : ''}
 --- ARCHITECTURE ---
 ${fs.readFileSync(archPath, 'utf8')}
 --- TASK PLAN ---
@@ -105,9 +113,9 @@ ${fs.readFileSync(taskPath, 'utf8')}
       const briefDescription = fs.readFileSync(brdPath, 'utf8').substring(0, 500);
       const selectedSkills = await selectRelevantSkills(briefDescription);
 
-      const passed = await auditPlan(combinedContent, selectedSkills);
+      const result = await auditPlan(combinedContent, selectedSkills);
       
-      if (passed) {
+      if (result.passed) {
         markPhaseComplete('audit', 'execute');
         console.log(chalk.green(`\nYou are cleared to run: npx ceobe execute ${prefix ? prefix + 'task.md' : ''}\n`));
       } else {
@@ -135,7 +143,10 @@ program
       const brd = await generateBRD(description, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, 'feature-brd.md'), brd);
 
-      const arch = await generateArchitecture(brd, selectedSkills);
+      const design = await generateDesignSpec(brd, selectedSkills);
+      fs.writeFileSync(path.join(ceobeDir, 'feature-design.md'), design);
+
+      const arch = await generateArchitecture(brd, design, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, 'feature-architecture.md'), arch);
 
       const plan = await generateImplementationPlan(arch, selectedSkills);
@@ -144,11 +155,32 @@ program
       markPhaseComplete('build-feature', 'audit');
       
       console.log(chalk.magenta(`\n[Feature Blueprint Complete] Documents saved to .ceobe/ folder.`));
-      console.log(chalk.yellow(`Please review feature-brd.md, feature-architecture.md, and feature-task.md.`));
+      console.log(chalk.yellow(`Please review feature-brd.md, feature-design.md, feature-architecture.md, and feature-task.md.`));
       console.log(chalk.green(`Once approved, run: npx ceobe execute feature-task.md\n`));
     } catch (err) {
       console.error(chalk.red('\n[Error] Feature build failed.'));
       console.error(err);
+    }
+  });
+
+program
+  .command('auto <description>')
+  .description('Run the Supervisor Agent to autonomously plan, audit, auto-correct, and execute.')
+  .option('--ask', 'Ask for confirmation before executing the plan', false)
+  .option('--feature', 'Run as a feature build instead of a new project', false)
+  .action(async (description: string, options: { ask: boolean, feature: boolean }) => {
+    await runAutonomousLoop(description, options.ask, options.feature);
+  });
+
+program
+  .command('index')
+  .description('Index the workspace for semantic search memory (RAG).')
+  .action(async () => {
+    console.log(chalk.blue(`Indexing workspace: ${env.TARGET_PROJECT_DIR}`));
+    try {
+      await indexWorkspace();
+    } catch (err) {
+      console.error(chalk.red('\n[Error] Failed to index workspace.'));
     }
   });
 

@@ -1,146 +1,152 @@
-# Skill: Vue/Nuxt Frontend Architecture
+# Skill: Vue 3 Architecture & Patterns
 
 ## 1. Metadata
-- **Name:** `vue-frontend`
+- **Name:** `vue`
 - **Origin:** `Astesia Core`
-- **Description:** Architecture patterns for Vue 3 and Nuxt 3 applications. Covers Composition API, Pinia for state management, Vue Router, and SSR patterns.
+- **Description:** Standards for building Vue 3 applications. Emphasizes the Composition API (`<script setup>`), Pinia for state management, and strict TypeScript integration.
 
 ## 2. When to Use
-Invoke this skill when:
-- The Engineering Layer is building a frontend using Vue 3 or Nuxt 3.
-- Implementing reactive user interfaces that require clear separation of state and template logic.
-- Building SEO-friendly web apps using Nuxt's SSR capabilities.
+Invoke this skill when building a frontend application using Vue.js.
 
-## 3. Practical Guidance
+## 3. Constraints (Anti-Patterns — NEVER DO)
+- ❌ Never use the Vue 2 Options API (`data()`, `methods`, `created()`). Always use Vue 3 `<script setup>`.
+- ❌ Never mutate props directly — emit events to the parent.
+- ❌ Never use Vuex — use Pinia for global state.
+- ❌ Never use `any` in TypeScript setups. Define strict interfaces for props and emits.
 
-### Project Structure (Nuxt 3 Standard)
-```
-/
-├── app.vue               # Main application entry
-├── nuxt.config.ts        # Framework configuration
-├── pages/                # File-based routing (Vue components)
-│   ├── index.vue
-│   └── users/
-│       └── [id].vue      # Dynamic route
-├── components/           # Auto-imported UI components
-│   ├── ui/               # Base components (Button, Input)
-│   └── feature/          # Domain-specific components
-├── layouts/              # Reusable page wrappers
-│   └── default.vue
-├── composables/          # Auto-imported Composition API hooks
-│   ├── useAuth.ts
-│   └── useApi.ts
-├── store/                # Pinia stores (global state)
-│   └── auth.ts
-├── server/               # Nuxt Nitro API routes (if needed)
-│   └── api/
-├── middleware/           # Route middleware (e.g., auth guards)
-└── assets/               # Global CSS and images
-```
+## 4. Practical Patterns
 
-### Composition API (Script Setup)
-Always use `<script setup>` with Vue 3 for concise, performant component logic.
-
+### Single File Component (Composition API)
 ```vue
-<!-- components/UserCard.vue -->
+<!-- src/components/UserProfile.vue -->
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import type { User } from '~/types';
+import { ref, computed, onMounted } from 'vue';
+import type { User } from '@/types';
 
-// Define props with TypeScript
+// 1. Props with TypeScript
 const props = defineProps<{
   user: User;
-  isActive?: boolean;
+  isLoading?: boolean;
 }>();
 
-// Define emits for parent communication
+// 2. Emits
 const emit = defineEmits<{
+  (e: 'update', newName: string): void;
   (e: 'delete', id: number): void;
 }>();
 
-// Reactive state
-const isExpanded = ref(false);
+// 3. Reactive State
+const isEditing = ref(false);
+const draftName = ref(props.user.name);
 
-// Computed properties
-const displayName = computed(() => 
-  props.user.name.toUpperCase()
-);
+// 4. Computed properties
+const displayName = computed(() => {
+  return props.user.name.toUpperCase();
+});
 
-function handleDelete() {
-  emit('delete', props.user.id);
-}
+// 5. Methods
+const save = () => {
+  emit('update', draftName.value);
+  isEditing.value = false;
+};
+
+// 6. Lifecycle hooks
+onMounted(() => {
+  console.log('Component mounted for user:', props.user.id);
+});
 </script>
 
 <template>
-  <div class="p-4 border rounded" :class="{ 'bg-blue-50': isActive }">
-    <h3>{{ displayName }}</h3>
-    <button @click="isExpanded = !isExpanded">Toggle Details</button>
-    
-    <div v-if="isExpanded">
-      <p>{{ user.email }}</p>
-      <button @click="handleDelete" class="text-red-500">Delete</button>
+  <div class="user-profile">
+    <div v-if="isLoading">Loading...</div>
+    <div v-else>
+      <h2>{{ displayName }}</h2>
+      
+      <div v-if="isEditing">
+        <input v-model="draftName" @keyup.enter="save" />
+        <button @click="save">Save</button>
+      </div>
+      <div v-else>
+        <button @click="isEditing = true">Edit</button>
+        <button class="danger" @click="emit('delete', user.id)">Delete</button>
+      </div>
     </div>
   </div>
 </template>
 ```
 
-### Data Fetching in Nuxt (SSR/CSR)
-Use Nuxt's built-in composables `useFetch` or `useAsyncData` to handle hydration correctly without double-fetching.
-
-```vue
-<!-- pages/users/index.vue -->
-<script setup lang="ts">
-// This runs on the server during SSR, and on the client during navigation.
-// It automatically deduplicates the request during hydration.
-const { data: users, pending, error } = await useFetch('/api/users', {
-  // Optional: transform response
-  transform: (res) => res.data
-});
-</script>
-
-<template>
-  <div>
-    <h1>Users</h1>
-    <div v-if="pending">Loading...</div>
-    <div v-else-if="error">Error loading users.</div>
-    <ul v-else>
-      <li v-for="user in users" :key="user.id">{{ user.name }}</li>
-    </ul>
-  </div>
-</template>
-```
-
-### Global State Management (Pinia)
-Avoid deep prop-drilling or large reactive objects. Use Pinia stores for global state.
-
+### Pinia Store (Setup Syntax)
 ```typescript
-// store/auth.ts
+// src/stores/auth.ts
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import type { User } from '@/types';
+import { api } from '@/utils/api';
 
 export const useAuthStore = defineStore('auth', () => {
-  // State
+  // State (refs)
   const user = ref<User | null>(null);
-  const token = ref<string | null>(null);
+  const token = ref<string | null>(localStorage.getItem('token'));
 
-  // Getters
+  // Getters (computed)
   const isAuthenticated = computed(() => !!token.value);
+  const userName = computed(() => user.value?.name || 'Guest');
 
-  // Actions
-  async function login(credentials: Credentials) {
-    const res = await $fetch('/api/login', { method: 'POST', body: credentials });
+  // Actions (functions)
+  async function login(credentials: Record<string, string>) {
+    const res = await api.post('/auth/login', credentials);
     token.value = res.token;
     user.value = res.user;
+    localStorage.setItem('token', res.token);
   }
 
   function logout() {
     token.value = null;
     user.value = null;
+    localStorage.removeItem('token');
   }
 
-  return { user, token, isAuthenticated, login, logout };
+  return { user, token, isAuthenticated, userName, login, logout };
 });
 ```
 
-## 4. Tested Examples
-(See above for component, fetching, and state management patterns)
+### Composable Pattern (Reusability)
+```typescript
+// src/composables/useFetch.ts
+import { ref, isRef, unref, watchEffect } from 'vue';
+
+export function useFetch<T>(url: string | import('vue').Ref<string>) {
+  const data = ref<T | null>(null);
+  const error = ref<Error | null>(null);
+  const isFetching = ref(false);
+
+  async function doFetch() {
+    isFetching.value = true;
+    error.value = null;
+    try {
+      const res = await fetch(unref(url));
+      if (!res.ok) throw new Error('Fetch failed');
+      data.value = await res.json();
+    } catch (e: any) {
+      error.value = e;
+    } finally {
+      isFetching.value = false;
+    }
+  }
+
+  // Auto-refetch if URL is a ref and it changes
+  if (isRef(url)) {
+    watchEffect(doFetch);
+  } else {
+    doFetch();
+  }
+
+  return { data, error, isFetching, refetch: doFetch };
+}
+```
+
+## 5. Standard Libraries
+- **Routing:** `vue-router` v4
+- **State:** `pinia`
+- **Data Fetching:** `vue-query` (TanStack Query) or custom composables
+- **Testing:** `vitest` + `@vue/test-utils`

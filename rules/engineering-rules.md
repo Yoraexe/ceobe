@@ -248,3 +248,11 @@ All database queries must be optimized for production scale:
 Before executing any file modification, the agent must output a brief trace note in its thought process or response:
 "Trace: Trigger -> Controller X -> Service Y -> DB Z. Editing Service Y to add..."
 This ensures logical alignment before code is written.
+
+---
+
+# 18. Zero-Downtime Database Migrations
+
+AI agents MUST NOT execute destructive database schema changes (e.g., `DROP TABLE`, `ALTER TABLE DROP COLUMN`, renaming columns) in a single step. 
+You must strictly enforce the **Expand and Contract** pattern to ensure Zero-Downtime compatibility.
+Auditors MUST REJECT any execution plan that violates this rule.

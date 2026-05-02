@@ -1,128 +1,153 @@
-# Skill: SvelteKit Frontend Architecture
+# Skill: SvelteKit Architecture & Patterns
 
 ## 1. Metadata
-- **Name:** `sveltekit-frontend`
+- **Name:** `sveltekit`
 - **Origin:** `Astesia Core`
-- **Description:** Architecture patterns for SvelteKit applications. Enforces strict separation between Server (`+page.server.ts`), Client (`+page.svelte`), and data fetching logic.
+- **Description:** Standards for building SvelteKit applications. Emphasizes server-side rendering, form actions, and Svelte 5 syntax.
 
 ## 2. When to Use
-Invoke this skill when:
-- Building a frontend application using SvelteKit (Astesia's default frontend).
-- The Design Layer has output `design-system.md` with tokens that need implementation.
-- Building forms that require robust validation (Superforms).
+Invoke this skill when building a frontend or fullstack web application using SvelteKit.
 
-## 3. Practical Guidance
+## 3. Constraints (Anti-Patterns — NEVER DO)
+- ❌ Never use `export let data` — Svelte 5 uses `$props()`.
+- ❌ Never put sensitive API keys in `+page.ts` — use `+page.server.ts`.
+- ❌ Never manually handle `fetch` for form submissions unless absolutely necessary — use SvelteKit Form Actions with `use:enhance`.
+- ❌ Never put global state in raw `.ts` files — use Svelte `context` or stores to avoid state bleeding across SSR requests.
 
-### Project Structure
-```
-src/
-├── app.html              # HTML shell
-├── routes/               # File-system routing
-│   ├── +layout.svelte    # Root layout (providers, global styles)
-│   ├── +page.svelte      # Home page component
-│   ├── +page.server.ts   # Home page server-side data fetching
-│   └── (auth)/           # Route group
-│       ├── login/
-│       │   ├── +page.svelte
-│       │   └── +page.server.ts
-├── lib/                  # SvelteKit $lib alias
-│   ├── components/       # Shared UI components
-│   │   ├── ui/           # Primitive UI (Button, Input)
-│   │   └── layout/       # Layout components
-│   ├── server/           # Server-only utilities (db, secrets)
-│   │   ├── db.ts         
-│   │   └── auth.ts       
-│   ├── stores/           # Svelte stores / Runes state
-│   └── utils/            # Generic helpers
-```
+## 4. Practical Patterns
 
-### Server Load vs Client Load vs Component
-
-```typescript
-// ✅ Server Load (+page.server.ts) — Runs ONLY on server, safe for secrets/DB
-import type { PageServerLoad } from './$types';
-import { db } from '$lib/server/db';
-
-export const load: PageServerLoad = async () => {
-  const users = await db.query.users.findMany();
-  return { users }; // Data passed to +page.svelte via data prop
-};
-
-// ✅ Component (+page.svelte) — Receives data from server load
+### Component Syntax (Svelte 5 Runes)
+```svelte
+<!-- src/components/Counter.svelte -->
 <script lang="ts">
-  import type { PageData } from './$types';
-  export let data: PageData;
+  // Always use $props(), $state(), and $derived() instead of old syntax
+  let { initialCount = 0 } = $props<{ initialCount?: number }>();
   
-  // Svelte 5 Runes state (if interactivity needed)
-  let search = $state('');
-  let filtered = $derived(data.users.filter(u => u.name.includes(search)));
+  let count = $state(initialCount);
+  let double = $derived(count * 2);
+
+  function increment() {
+    count++;
+  }
 </script>
 
-<input bind:value={search} />
-{#each filtered as user}
-  <div>{user.name}</div>
-{/each}
+<button onclick={increment}>
+  Count: {count} (Double: {double})
+</button>
 ```
 
-### Forms and Actions (Superforms)
-Do not use raw `fetch()` in components for form submission. Use standard SvelteKit actions, ideally augmented with Superforms and Zod.
-
+### Server Load & Form Actions
 ```typescript
-// +page.server.ts
-import { superValidate } from 'sveltekit-superforms/server';
-import { zod } from 'sveltekit-superforms/adapters';
-import { userSchema } from '$lib/schemas/user';
-import { fail } from '@sveltejs/kit';
+// src/routes/login/+page.server.ts
+import { fail, redirect } from '@sveltejs/kit';
+import type { PageServerLoad, Actions } from './$types';
+import { z } from 'zod';
 
-export const load = async () => {
-  const form = await superValidate(zod(userSchema));
-  return { form };
+// 1. Data loading (Runs on server only)
+export const load: PageServerLoad = async ({ locals }) => {
+  if (locals.user) throw redirect(302, '/dashboard');
+  return { seoTitle: 'Login' };
 };
 
-export const actions = {
-  default: async ({ request }) => {
-    const form = await superValidate(request, zod(userSchema));
-    if (!form.valid) return fail(400, { form });
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6)
+});
+
+// 2. Form Actions
+export const actions: Actions = {
+  default: async ({ request, cookies }) => {
+    const formData = await request.formData();
+    const result = loginSchema.safeParse(Object.fromEntries(formData));
     
-    // Save to DB...
-    return { form };
+    if (!result.success) {
+      return fail(400, { 
+        errors: result.error.flatten().fieldErrors,
+        email: formData.get('email')?.toString()
+      });
+    }
+
+    try {
+      const { email, password } = result.data;
+      const session = await authService.login(email, password);
+      
+      cookies.set('session', session.id, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production'
+      });
+    } catch (err) {
+      return fail(401, { message: 'Invalid credentials' });
+    }
+
+    throw redirect(302, '/dashboard');
   }
 };
 ```
 
-```html
-<!-- +page.svelte -->
+### Form UI with Progressive Enhancement
+```svelte
+<!-- src/routes/login/+page.svelte -->
 <script lang="ts">
-  import { superForm } from 'sveltekit-superforms/client';
-  export let data;
-  
-  const { form, errors, enhance } = superForm(data.form);
+  import { enhance } from '$app/forms';
+  import type { ActionData, PageData } from './$types';
+
+  let { data, form } = $props<{ data: PageData, form: ActionData }>();
 </script>
 
+<svelte:head>
+  <title>{data.seoTitle}</title>
+</svelte:head>
+
+<!-- use:enhance handles JS-based submission automatically -->
 <form method="POST" use:enhance>
-  <input name="name" bind:value={$form.name} />
-  {#if $errors.name}<span>{$errors.name}</span>{/if}
-  <button>Submit</button>
+  {#if form?.message}
+    <p class="error">{form.message}</p>
+  {/if}
+
+  <label>
+    Email:
+    <input type="email" name="email" value={form?.email ?? ''} required />
+  </label>
+  {#if form?.errors?.email}
+    <span class="error">{form.errors.email[0]}</span>
+  {/if}
+
+  <label>
+    Password:
+    <input type="password" name="password" required />
+  </label>
+
+  <button type="submit">Login</button>
 </form>
 ```
 
-### Design Token Integration
-Map Design Layer tokens to CSS variables or Tailwind config just like any other modern framework:
-
+### API Routes
 ```typescript
-// tailwind.config.ts
-export default {
-  content: ['./src/**/*.{html,js,svelte,ts}'],
-  theme: {
-    extend: {
-      colors: {
-        primary: 'hsl(var(--color-primary))',
-        // ... mapped from design-system.md
-      }
-    }
-  }
-}
+// src/routes/api/users/+server.ts
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ url, locals }) => {
+  if (!locals.user) return new Response('Unauthorized', { status: 401 });
+  
+  const limit = Number(url.searchParams.get('limit')) || 10;
+  const users = await db.getUsers(limit);
+  
+  return json(users);
+};
 ```
 
-## 4. Tested Examples
-(See above for standard Load, Actions, and Form integrations)
+## 5. Directory Structure
+```
+src/
+├── lib/               # Internal library (components, utils, stores)
+│   ├── components/    # Reusable UI components
+│   └── server/        # Server-only code (secrets, DB)
+├── routes/            # File-based routing
+│   ├── +layout.svelte # Shared layout
+│   ├── +page.svelte   # Homepage
+│   └── api/           # API endpoints
+└── app.d.ts           # App interfaces (Locals, PageData)
+```
