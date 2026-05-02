@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name('ceobe')
   .description('Ceobe CLI: An AI Engineering orchestrator using Gemini 3.1 Pro and Sonnet 4.6 via Cloudflare AI Gateway.')
-  .version('1.1.0');
+  .version('1.2.0');
 
 program
   .command('plan <description>')
