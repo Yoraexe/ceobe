@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/171</span>
+                <span class='fraction'>0/193</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/171</span>
+                <span class='fraction'>0/193</span>
             </div>
         
             
@@ -234,7 +234,51 @@
 <a name='L169'></a><a href='#L169'>169</a>
 <a name='L170'></a><a href='#L170'>170</a>
 <a name='L171'></a><a href='#L171'>171</a>
-<a name='L172'></a><a href='#L172'>172</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -411,9 +455,10 @@
 <span class="cstat-no" title="statement not covered" >import chalk from 'chalk';</span>
 <span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >import { env } from './config/env';</span>
-<span class="cstat-no" title="statement not covered" >import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, auditPlan } from './ai/planner';</span>
+<span class="cstat-no" title="statement not covered" >import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, generateDesignSpec, auditPlan } from './ai/planner';</span>
 <span class="cstat-no" title="statement not covered" >import { executePlan } from './ai/executor';</span>
 <span class="cstat-no" title="statement not covered" >import { runAutonomousLoop } from './ai/supervisor';</span>
+<span class="cstat-no" title="statement not covered" >import { indexWorkspace } from './ai/memory/indexer';</span>
 <span class="cstat-no" title="statement not covered" >import * as fs from 'fs';</span>
 <span class="cstat-no" title="statement not covered" >import * as path from 'path';</span>
 <span class="cstat-no" title="statement not covered" >import { markPhaseComplete } from './utils/stateManager';</span>
@@ -423,7 +468,7 @@
 <span class="cstat-no" title="statement not covered" >program</span>
 <span class="cstat-no" title="statement not covered" >  .name('ceobe')</span>
 <span class="cstat-no" title="statement not covered" >  .description('Ceobe CLI: An AI Engineering orchestrator using Gemini 3.1 Pro and Sonnet 4.6 via Cloudflare AI Gateway.')</span>
-<span class="cstat-no" title="statement not covered" >  .version('1.1.0');</span>
+<span class="cstat-no" title="statement not covered" >  .version('1.2.0');</span>
 <span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >program</span>
 <span class="cstat-no" title="statement not covered" >  .command('plan &lt;description&gt;')</span>
@@ -441,7 +486,10 @@
 <span class="cstat-no" title="statement not covered" >      const brd = await generateBRD(description, selectedSkills);</span>
 <span class="cstat-no" title="statement not covered" >      fs.writeFileSync(path.join(ceobeDir, 'brd.md'), brd);</span>
 <span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >      const arch = await generateArchitecture(brd, selectedSkills);</span>
+<span class="cstat-no" title="statement not covered" >      const design = await generateDesignSpec(brd, selectedSkills);</span>
+<span class="cstat-no" title="statement not covered" >      fs.writeFileSync(path.join(ceobeDir, 'design.md'), design);</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >      const arch = await generateArchitecture(brd, design, selectedSkills);</span>
 <span class="cstat-no" title="statement not covered" >      fs.writeFileSync(path.join(ceobeDir, 'architecture.md'), arch);</span>
 <span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >      const plan = await generateImplementationPlan(arch, selectedSkills);</span>
@@ -450,7 +498,7 @@
 <span class="cstat-no" title="statement not covered" >      markPhaseComplete('plan', 'audit');</span>
 <span class="cstat-no" title="statement not covered" >      </span>
 <span class="cstat-no" title="statement not covered" >      console.log(chalk.magenta(`\n[Planning Phase Complete] Documents saved to .ceobe/ folder.`));</span>
-<span class="cstat-no" title="statement not covered" >      console.log(chalk.yellow(`Please review brd.md, architecture.md, and task.md.`));</span>
+<span class="cstat-no" title="statement not covered" >      console.log(chalk.yellow(`Please review brd.md, design.md, architecture.md, and task.md.`));</span>
 <span class="cstat-no" title="statement not covered" >      console.log(chalk.green(`Once approved, run: npx ceobe execute\n`));</span>
 <span class="cstat-no" title="statement not covered" >    } catch (err) {</span>
 <span class="cstat-no" title="statement not covered" >      console.error(chalk.red('\n[Error] Project planning failed.'));</span>
@@ -492,6 +540,7 @@
 <span class="cstat-no" title="statement not covered" >    try {</span>
 <span class="cstat-no" title="statement not covered" >      const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');</span>
 <span class="cstat-no" title="statement not covered" >      const brdPath = path.join(ceobeDir, prefix ? `${prefix}brd.md` : 'brd.md');</span>
+<span class="cstat-no" title="statement not covered" >      const designPath = path.join(ceobeDir, prefix ? `${prefix}design.md` : 'design.md');</span>
 <span class="cstat-no" title="statement not covered" >      const archPath = path.join(ceobeDir, prefix ? `${prefix}architecture.md` : 'architecture.md');</span>
 <span class="cstat-no" title="statement not covered" >      const taskPath = path.join(ceobeDir, prefix ? `${prefix}task.md` : 'task.md');</span>
 <span class="cstat-no" title="statement not covered" ></span>
@@ -503,6 +552,8 @@
 <span class="cstat-no" title="statement not covered" >      const combinedContent = `</span>
 <span class="cstat-no" title="statement not covered" >--- BRD ---</span>
 <span class="cstat-no" title="statement not covered" >${fs.readFileSync(brdPath, 'utf8')}</span>
+<span class="cstat-no" title="statement not covered" >--- DESIGN ---</span>
+<span class="cstat-no" title="statement not covered" >${fs.existsSync(designPath) ? fs.readFileSync(designPath, 'utf8') : ''}</span>
 <span class="cstat-no" title="statement not covered" >--- ARCHITECTURE ---</span>
 <span class="cstat-no" title="statement not covered" >${fs.readFileSync(archPath, 'utf8')}</span>
 <span class="cstat-no" title="statement not covered" >--- TASK PLAN ---</span>
@@ -543,7 +594,10 @@
 <span class="cstat-no" title="statement not covered" >      const brd = await generateBRD(description, selectedSkills);</span>
 <span class="cstat-no" title="statement not covered" >      fs.writeFileSync(path.join(ceobeDir, 'feature-brd.md'), brd);</span>
 <span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >      const arch = await generateArchitecture(brd, selectedSkills);</span>
+<span class="cstat-no" title="statement not covered" >      const design = await generateDesignSpec(brd, selectedSkills);</span>
+<span class="cstat-no" title="statement not covered" >      fs.writeFileSync(path.join(ceobeDir, 'feature-design.md'), design);</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >      const arch = await generateArchitecture(brd, design, selectedSkills);</span>
 <span class="cstat-no" title="statement not covered" >      fs.writeFileSync(path.join(ceobeDir, 'feature-architecture.md'), arch);</span>
 <span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >      const plan = await generateImplementationPlan(arch, selectedSkills);</span>
@@ -552,7 +606,7 @@
 <span class="cstat-no" title="statement not covered" >      markPhaseComplete('build-feature', 'audit');</span>
 <span class="cstat-no" title="statement not covered" >      </span>
 <span class="cstat-no" title="statement not covered" >      console.log(chalk.magenta(`\n[Feature Blueprint Complete] Documents saved to .ceobe/ folder.`));</span>
-<span class="cstat-no" title="statement not covered" >      console.log(chalk.yellow(`Please review feature-brd.md, feature-architecture.md, and feature-task.md.`));</span>
+<span class="cstat-no" title="statement not covered" >      console.log(chalk.yellow(`Please review feature-brd.md, feature-design.md, feature-architecture.md, and feature-task.md.`));</span>
 <span class="cstat-no" title="statement not covered" >      console.log(chalk.green(`Once approved, run: npx ceobe execute feature-task.md\n`));</span>
 <span class="cstat-no" title="statement not covered" >    } catch (err) {</span>
 <span class="cstat-no" title="statement not covered" >      console.error(chalk.red('\n[Error] Feature build failed.'));</span>
@@ -569,6 +623,18 @@
 <span class="cstat-no" title="statement not covered" >    await runAutonomousLoop(description, options.ask, options.feature);</span>
 <span class="cstat-no" title="statement not covered" >  });</span>
 <span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >program</span>
+<span class="cstat-no" title="statement not covered" >  .command('index')</span>
+<span class="cstat-no" title="statement not covered" >  .description('Index the workspace for semantic search memory (RAG).')</span>
+<span class="cstat-no" title="statement not covered" >  .action(async () =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    console.log(chalk.blue(`Indexing workspace: ${env.TARGET_PROJECT_DIR}`));</span>
+<span class="cstat-no" title="statement not covered" >    try {</span>
+<span class="cstat-no" title="statement not covered" >      await indexWorkspace();</span>
+<span class="cstat-no" title="statement not covered" >    } catch (err) {</span>
+<span class="cstat-no" title="statement not covered" >      console.error(chalk.red('\n[Error] Failed to index workspace.'));</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >  });</span>
+<span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >// Parse the arguments</span>
 <span class="cstat-no" title="statement not covered" >program.parse(process.argv);</span>
 <span class="cstat-no" title="statement not covered" ></span>
@@ -583,7 +649,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-02T02:36:52.958Z
+                at 2026-05-04T07:32:29.868Z
             </div>
         <script src="../prettify.js"></script>
         <script>
