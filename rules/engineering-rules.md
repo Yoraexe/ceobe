@@ -6,28 +6,24 @@ All generated code must respect these rules unless explicitly overridden by proj
 
 ---
 
-# 1. Architecture Layering
+# 1. Architecture Layering & Adaptive Legacy Fallback
 
-Applications must follow a layered architecture.
+Applications should ideally follow a layered architecture for new features (Greenfield).
 
-Recommended structure:
-
+Recommended structure for Greenfield:
 - API / Controller layer
 - Service layer
 - Repository / Data layer
 
-Responsibilities:
-
-API Layer
-Handles HTTP requests and responses only.
-
-Service Layer
-Contains business logic.
-
-Repository Layer
-Handles database access and queries.
-
+Responsibilities for Layered Architecture:
+API Layer: Handles HTTP requests and responses only.
+Service Layer: Contains business logic.
+Repository Layer: Handles database access and queries.
 Business logic must never be placed inside controllers.
+
+### ADAPTIVE LEGACY FALLBACK (IMPORTANT)
+If you are modifying an **existing** project (Brownfield/Legacy) that uses a different structural pattern (e.g., traditional MVC like Laravel, basic Express, Django MVT), **DO NOT force the Layered Architecture**.
+You MUST respect the existing patterns. For example, if a legacy Laravel project puts database calls via Eloquent directly in the Controller, you are allowed to follow that pattern for consistency, rather than rewriting the entire application. Consistency is prioritized over idealism in legacy projects.
 
 ---
 

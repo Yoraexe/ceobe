@@ -4,9 +4,10 @@ An autonomous AI Engineering orchestrator CLI powered by Gemini 3.1 Pro (Planner
 
 ## Features
 - **5-Phase Architecture:** Plan -> Design -> Engineering -> Quality -> DevOps.
-- **Microservices & Monorepo Ready.**
+- **Polyglot & Microservices Ready:** Native support for Node.js, Go, Rust, Python, PHP/Laravel, and React Native.
 - **Human-in-the-Loop:** Intervene and modify Agent plans before a single line of code is written.
-- **Dynamic Skill Routing:** Equipped with 15+ specialized engineering rules (Bun, Next.js, Cloudflare, Security, etc).
+- **Adaptive Legacy Fallback:** Respects existing codebase architectures (like traditional MVC) instead of forcing rewrites.
+- **Dynamic Skill Routing:** Equipped with 30+ specialized engineering rules (Next.js, Laravel, Bun, Prisma, Python, React Native, Security, etc).
 
 ## Installation
 

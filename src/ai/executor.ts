@@ -1,207 +1,253 @@
-// Tujuan: Mengeksekusi plan dari model Anthropic dengan menangani pemanggilan tools secara asinkron.
-// Caller: src/index.ts atau src/ai/planner.ts
-// Dependensi: @anthropic-ai/sdk, systemTools, stateManager, retry
-// Main Functions: executePlan
-// Side Effects: Mengirim HTTP request ke Anthropic, memanggil fungsi sistem (I/O) via systemTools.
+// Module: src/ai/executor.ts
+// Purpose: Execution Engine. Runs the agent loop using any configured AI provider.
+//          Provider selection is handled by createExecutorAdapter() - not here.
+//          When mode=ask, destructive tool calls pause and require user confirmation.
+// Caller: src/index.ts, src/ai/supervisor.ts
+// Dependencies: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path
+// Side Effects: Sends HTTP requests to the configured AI provider, calls system tools (I/O).
 
-import Anthropic from '@anthropic-ai/sdk';
-import { env } from '../config/env';
-import { getGatewayUrl } from './gateway';
+import { createExecutorAdapter } from './providers/router';
+import type { NormalizedMessage, NormalizedContentBlock, NormalizedTool } from './providers/types';
 import chalk from 'chalk';
 import ora from 'ora';
-import { tools, handleToolCall } from './tools/systemTools';
-import { withRetry } from '../utils/retry';
+import { tools as rawTools, handleToolCall } from './tools/systemTools';
 import * as fs from 'fs';
 import * as path from 'path';
+import { env } from '../config/env';
+import { markFileComplete } from '../utils/stateManager';
+import { getActiveMode, SENSITIVE_TOOLS, confirmToolCall } from '../utils/modeManager';
+
+// Cast Ceobe's internal tool format to the normalized type
+const tools = rawTools as unknown as NormalizedTool[];
 
 /**
- * Safely trims Anthropic messages to avoid exceeding context window limits,
- * while ensuring that tool_use and tool_result blocks are never orphaned.
+ * Safely trims the message history to avoid exceeding context window limits,
+ * while ensuring tool_use / tool_result pairs are never orphaned.
  */
-export function trimMessages(messages: Anthropic.MessageParam[], maxMessages: number = 25): Anthropic.MessageParam[] {
+export function trimMessages(
+  messages: NormalizedMessage[],
+  maxMessages: number = 25
+): NormalizedMessage[] {
   if (messages.length <= maxMessages) return messages;
 
-  // Always keep the first message (usually the initial system or user prompt)
   const firstMessage = messages[0];
   const targetTailLength = maxMessages - 1;
-  
   let sliceIndex = messages.length - targetTailLength;
-  
-  // We must ensure that the message at sliceIndex does not break a tool pair.
-  // In Anthropic, a tool_result in role 'user' must be preceded by a tool_use in role 'assistant'.
-  // If the first message in our tail is a user message containing 'tool_result',
-  // we must move sliceIndex backwards to include the assistant message that spawned it.
+
+  // Ensure we never start on a user message that is a tool_result without its
+  // preceding assistant tool_use.
   while (sliceIndex > 1) {
     const startMsg = messages[sliceIndex];
-    
-    // Check if startMsg is a user message containing tool_result
     let startsWithToolResult = false;
+
     if (startMsg.role === 'user' && Array.isArray(startMsg.content)) {
-      startsWithToolResult = startMsg.content.some((c: any) => c.type === 'tool_result');
+      startsWithToolResult = startMsg.content.some(
+        (c: NormalizedContentBlock) => c.type === 'tool_result'
+      );
     }
-    
+
     if (startsWithToolResult) {
-       // Move index back by 1 to grab the assistant's tool_use
-       sliceIndex--;
+      sliceIndex--;
     } else {
-       // Also check if we just split an assistant's tool_use from its user's tool_result.
-       // i.e., if startMsg is an assistant message, we need to check if the PREVIOUS message
-       // was ALSO an assistant message with tool calls, meaning we might be entering mid-chain.
-       // The simplest invariant: if startMsg is 'assistant', it's safe to start there unless
-       // it's a tool_use and the NEXT message is a user tool_result, which is fine since we keep the tail.
-       break;
+      break;
     }
   }
-  
+
   return [firstMessage, ...messages.slice(sliceIndex)];
 }
 
-export async function executePlan(planMarkdown: string, architecture: string = '', design: string = ''): Promise<void> {
-  const spinner = ora('Claude 4.6 Sonnet is executing the plan...').start();
-  
+export async function executePlan(
+  planMarkdown: string,
+  architecture: string = '',
+  design: string = ''
+): Promise<void> {
+  const adapter = createExecutorAdapter();
+  const spinner = ora(`${adapter.name.toUpperCase()} (${adapter.modelId}) is executing the plan...`).start();
+
   try {
-    const gatewayUrl = getGatewayUrl('anthropic');
-    const anthropic = new Anthropic({
-        apiKey: env.ANTHROPIC_API_KEY,
-        baseURL: gatewayUrl
-    });
-
     const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
-    if (!fs.existsSync(path.dirname(logPath))) fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    if (!fs.existsSync(path.dirname(logPath))) {
+      fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    }
 
-    const logExecution = (text: string) => {
-       fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${text}\n`, 'utf8');
+    const logExecution = (text: string): void => {
+      fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${text}\n`, 'utf8');
     };
-    
-    logExecution('--- STARTED EXECUTION ---');
+
+    logExecution(`--- STARTED EXECUTION (provider: ${adapter.name}, model: ${adapter.modelId}) ---`);
 
     let systemInstruction = `
 You are the Execution Engine of the Ceobe AI System.
 Your task is to take the provided execution plan and strictly implement it.
-You have access to tool commands if run within an agent wrapper, otherwise output the exact code and terminal commands required to fulfill the user's request.
+You have access to tool commands to read/write files and run terminal commands.
 DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 `;
 
     if (architecture) {
-      systemInstruction += `\n[ARCHITECTURE CONTEXT]\nAdhere to the following architecture and folder structure strictly:\n${architecture}\n`;
+      systemInstruction += `\n[ARCHITECTURE CONTEXT]\nAdhere to the following architecture strictly:\n${architecture}\n`;
     }
-    
     if (design) {
       systemInstruction += `\n[DESIGN CONTEXT]\nAdhere to the following design constraints:\n${design}\n`;
     }
 
-    let messages: Anthropic.MessageParam[] = [
+    let messages: NormalizedMessage[] = [
       {
-        role: "user",
-        content: `Execute the following plan:\n\n${planMarkdown}`
-      }
+        role: 'user',
+        content: `Execute the following plan:\n\n${planMarkdown}`,
+      },
     ];
 
     let isThinking = true;
+
     while (isThinking) {
-      // Context Window Compression (Token Bloat Mitigation)
       messages = trimMessages(messages, 25);
 
-      const msg = await withRetry(() => anthropic.messages.create({
-        model: "claude-4.6-sonnet",
-        max_tokens: 8192,
-        temperature: 0,
-        system: systemInstruction,
-        messages: messages,
-        tools: tools as any // Type bypass for SDK version compatibility,
-      }));
+      const response = await adapter.chat(messages, tools, systemInstruction);
 
-      // Log the assistant's text reasoning before the tool call
-      const textBlock = msg.content.find(c => c.type === 'text');
-      if (textBlock && textBlock.type === 'text' && textBlock.text) {
-         spinner.text = chalk.cyan(`Claude is thinking: ${textBlock.text.substring(0, 50)}...`);
+      // Surface the model's text reasoning in the spinner
+      const textBlock = response.content.find((c) => c.type === 'text');
+      if (textBlock?.text) {
+        spinner.text = chalk.cyan(
+          `[${adapter.name.toUpperCase()}] ${textBlock.text.substring(0, 70)}...`
+        );
       }
 
-      const toolCalls = msg.content.filter(c => c.type === 'tool_use');
-      
-      messages.push({
-        role: "assistant",
-        content: msg.content
-      });
-      
-      // Token Truncation Recovery
-      if (msg.stop_reason === 'max_tokens') {
+      const toolCalls = response.content.filter((c) => c.type === 'tool_use');
+
+      // Append the assistant's full response to history
+      messages.push({ role: 'assistant', content: response.content });
+
+      // --- Token truncation recovery ---
+      if (response.stop_reason === 'max_tokens') {
         if (toolCalls.length === 0) {
-          // Case 1: Pure text truncation — ask Claude to continue
-          logExecution('WARN: Hit max_tokens limit mid-text. Prompting to continue.');
+          logExecution('WARN: Hit max_tokens mid-text. Asking model to continue.');
           messages.push({
-             role: 'user',
-             content: 'You hit the max_tokens limit in the middle of your previous response. Please continue exactly where you left off. Do not repeat what you already said.'
+            role: 'user',
+            content:
+              'You hit the max_tokens limit mid-response. Please continue exactly where you left off.',
           });
           continue;
         } else {
-          // Case 2: Partial tool_use truncation — the last tool call's JSON may be incomplete.
-          // Discard the truncated assistant message and ask Claude to retry with smaller steps.
-          logExecution('WARN: Hit max_tokens limit mid-tool-call. Discarding truncated response and requesting retry.');
-          messages.pop(); // Remove the potentially malformed assistant message we just pushed
+          logExecution('WARN: Hit max_tokens mid-tool-call. Discarding truncated response.');
+          messages.pop();
           messages.push({
-             role: 'user',
-             content: 'You hit the max_tokens limit while generating tool calls. Your last response was discarded because it was incomplete. Please retry, but break your work into smaller steps — execute fewer tool calls per response to stay within the token limit.'
+            role: 'user',
+            content:
+              'You hit the max_tokens limit while generating tool calls. Your last response was discarded. Please retry, but use fewer tool calls per turn.',
           });
           continue;
         }
       }
 
+      // --- Agentic loop stop condition ---
       if (toolCalls.length === 0) {
-        // No more tools, stop loop
         isThinking = false;
-        spinner.succeed(chalk.green('Claude 4.6 Sonnet execution completed.'));
+        spinner.succeed(
+          chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) execution complete.`)
+        );
         console.log(chalk.cyan('\n--- Final Response ---\n'));
-        if (textBlock && textBlock.type === 'text') console.log(textBlock.text);
+        if (textBlock?.text) console.log(textBlock.text);
         console.log(chalk.cyan('\n----------------------\n'));
       } else {
-        // Execute tool calls and feed results back to Claude
-        let toolResults: Anthropic.ToolResultBlockParam[] = [];
-        
+        // --- Execute tool calls and feed results back ---
+        const toolResultBlocks: NormalizedContentBlock[] = [];
+        const activeMode = getActiveMode();
+
         for (const block of toolCalls) {
-          if (block.type !== 'tool_use') continue;
-          
-          spinner.text = chalk.yellow(`Claude is executing tool: ${block.name}...`);
-          
-          let logInputStr = JSON.stringify(block.input);
-          if ((block.name === 'write_file' || block.name === 'edit_file') && block.input) {
-             const inputObj = block.input as any;
-             if (inputObj.file_path) {
-                const lowerPath = String(inputObj.file_path).toLowerCase();
-                if (lowerPath.includes('.env') || lowerPath.includes('secret') || lowerPath.includes('key') || lowerPath.includes('.pem')) {
-                   const maskedInput = { ...inputObj, content: '[MASKED FOR SECURITY]', replacement_content: '[MASKED FOR SECURITY]' };
-                   logInputStr = JSON.stringify(maskedInput);
-                }
-             }
+          if (block.type !== 'tool_use' || !block.name) continue;
+
+          spinner.text = chalk.yellow(`[${adapter.name.toUpperCase()}] Executing tool: ${block.name}...`);
+
+          // ── ASK MODE GATE ──────────────────────────────────────────
+          if (activeMode === 'ask' && SENSITIVE_TOOLS.has(block.name)) {
+            spinner.stop();
+            let approved = false;
+            try {
+              approved = await confirmToolCall(block.name, (block.input ?? {}) as Record<string, unknown>);
+            } catch (abortErr: any) {
+              // User typed 'a' / 'abort' — stop the entire session
+              console.log(chalk.red(`\n[Mode: Bertanya] ${abortErr.message}`));
+              logExecution(`USER_ABORT: Session terminated by user during ${block.name}`);
+              return;
+            }
+
+            if (!approved) {
+              console.log(chalk.gray(`  ↳ Dilewati oleh pengguna.\n`));
+              toolResultBlocks.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: `SKIPPED: User chose to skip this action.`,
+              });
+              spinner.start();
+              continue;
+            }
+            spinner.start();
           }
-          
+          // ───────────────────────────────────────────────────────────
+
+          // Security: mask secrets from execution log
+          let logInputStr = JSON.stringify(block.input);
+          if (
+            (block.name === 'write_file' || block.name === 'edit_file') &&
+            block.input?.file_path
+          ) {
+            const lp = String(block.input.file_path).toLowerCase();
+            if (
+              lp.includes('.env') ||
+              lp.includes('secret') ||
+              lp.includes('key') ||
+              lp.includes('.pem')
+            ) {
+              logInputStr = JSON.stringify({
+                ...block.input,
+                content: '[MASKED]',
+                replacement_content: '[MASKED]',
+              });
+            }
+          }
+
           logExecution(`TOOL_CALL: ${block.name} | Input: ${logInputStr}`);
-          
-          const resultPayload = await handleToolCall(block.name, block.input);
-          
-          logExecution(`TOOL_RESULT: ${typeof resultPayload === 'string' ? resultPayload.substring(0, 200) + (resultPayload.length > 200 ? '...' : '') : 'Multimodal/JSON result'}`);
-          
-          toolResults.push({
+
+          const resultPayload = await handleToolCall(block.name, block.input ?? {});
+          const resultStr =
+            typeof resultPayload === 'string'
+              ? resultPayload
+              : JSON.stringify(resultPayload);
+
+          logExecution(
+            `TOOL_RESULT: ${resultStr.substring(0, 200)}${resultStr.length > 200 ? '...' : ''}`
+          );
+
+          // Mark file as complete for state resume
+          if (
+            (block.name === 'write_file' || block.name === 'edit_file') &&
+            block.input?.file_path
+          ) {
+            markFileComplete(String(block.input.file_path));
+          }
+
+          toolResultBlocks.push({
             type: 'tool_result',
             tool_use_id: block.id,
-            content: typeof resultPayload === 'string' ? resultPayload : resultPayload
+            content: resultStr,
           });
         }
-        
-        messages.push({
-          role: "user",
-          content: toolResults
-        });
+
+        messages.push({ role: 'user', content: toolResultBlocks });
       }
     }
-    
+
     logExecution('--- FINISHED EXECUTION ---\n');
-    
   } catch (error: any) {
-    spinner.fail(chalk.red('Claude 4.6 Sonnet execution failed.'));
-    console.error(chalk.red(error.message));
+    spinner.fail(
+      chalk.red(`[${adapter.name.toUpperCase()}] Execution failed: ${error.message}`)
+    );
     const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ERROR: ${error.message}\n`, 'utf8');
+    fs.appendFileSync(
+      logPath,
+      `[${new Date().toISOString()}] ERROR: ${error.message}\n`,
+      'utf8'
+    );
     throw error;
   }
 }

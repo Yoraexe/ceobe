@@ -217,6 +217,27 @@ export async function runAutonomousLoop(description: string, askBeforeExecute: b
              await execAsync('cargo test', { cwd: env.TARGET_PROJECT_DIR });
           }
           
+          // Polyglot: PHP/Laravel
+          if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'composer.json'))) {
+             try {
+                console.log(chalk.gray(`Running: composer validate`));
+                await execAsync('composer validate --no-check-all', { cwd: env.TARGET_PROJECT_DIR });
+             } catch (compErr: any) {
+                // Ignore if composer not installed globally
+             }
+             
+             if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'artisan'))) {
+                console.log(chalk.gray(`Running: php artisan about`));
+                try {
+                   await execAsync('php artisan about', { cwd: env.TARGET_PROJECT_DIR });
+                } catch (artisanErr: any) {
+                   if (!artisanErr.message.includes('not recognized') && !artisanErr.message.includes('not found')) {
+                      throw artisanErr;
+                   }
+                }
+             }
+          }
+          
           // Polyglot: Python
           if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'requirements.txt')) || fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'pyproject.toml'))) {
              console.log(chalk.gray(`Running: python -m compileall .`));
