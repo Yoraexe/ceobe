@@ -1,23 +1,40 @@
-import { getGeminiClient } from './geminiClient';
+// Module: src/ai/planner.ts
+// Purpose: Orchestrates all planning phases (BRD, Design, Architecture, Tasks, DevOps, Audit).
+//          Provider-agnostic: uses createPlannerAdapter() which reads CEOBE_PLANNER_PROVIDER.
+// Caller: src/index.ts, src/ai/supervisor.ts
+// Dependencies: providers/plannerAdapter, contextLoader, chalk, ora
+// Side Effects: HTTP requests to the configured planner AI provider
+
+import { createPlannerAdapter } from './providers/plannerAdapter';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readCeobeRules, readTemplate, getAvailableSkills, readSpecificSkills } from '../utils/contextLoader';
 import { withRetry } from '../utils/retry';
 
-/**
- * PHASE 0: SKILL CLASSIFICATION
- * Determines which specific skill sets are needed for the user's task.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper — gets a ready-to-use planner adapter and its display name
+// ─────────────────────────────────────────────────────────────────────────────
+function getPlanner() {
+  const adapter = createPlannerAdapter();
+  const tag = `[${adapter.name.toUpperCase()} / ${adapter.modelId}]`;
+  return { adapter, tag };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 0 — SKILL CLASSIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
 export async function selectRelevantSkills(taskDescription: string): Promise<string[]> {
-  const spinner = ora('Gemini 3.1 Pro is analyzing the required skills for this task...').start();
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Analyzing required skills...`).start();
+
   try {
     const availableSkills = getAvailableSkills();
     if (availableSkills.length === 0) {
-      spinner.succeed('No skills found in workspace. Proceeding without skills.');
+      spinner.succeed('No skills found. Proceeding without skills.');
       return [];
     }
 
-    const systemInstruction = `
+    const prompt = `
 You are the Ceobe AI Skill Router.
 Your ONLY job is to analyze the user request and determine which internal skills are required.
 
@@ -27,40 +44,42 @@ ${availableSkills.join(', ')}
 User Request:
 ${taskDescription}
 
-Analyze the request. Output ONLY a raw, comma-separated list of the exact skill names required. If none apply, output "none".
+Output ONLY a raw, comma-separated list of the exact skill names required. If none apply, output "none".
 Example: "cost-reducer, scalability, frontend-design"
 NO markdown, NO greetings, NO extra text.
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.0 } // 0.0 for strict deterministic classification
-    }));
-
-    const output = (response.text || '').trim();
+    const output = await adapter.generate(prompt, 0.0);
     if (output.toLowerCase() === 'none') {
-      spinner.succeed(chalk.green('Gemini selected NO specific skills.'));
+      spinner.succeed(chalk.green(`${tag} No specific skills selected.`));
       return [];
     }
 
     const selected = output.split(',').map(s => s.trim()).filter(s => availableSkills.includes(s));
-    spinner.succeed(chalk.green(`Gemini selected skills: ${selected.join(', ')}`));
+    spinner.succeed(chalk.green(`${tag} Skills selected: ${selected.join(', ')}`));
     return selected;
   } catch (error: any) {
-    spinner.fail(chalk.red('Failed to route skills. Proceeding with base rules only.'));
+    spinner.fail(chalk.red(`${tag} Failed to route skills. Proceeding with base rules only.`));
     return [];
   }
 }
 
-export async function generateBRD(taskDescription: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
-  const spinner = ora('Gemini 3.1 Pro is analyzing the request and generating a Business Requirements Document...').start();
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 1 — BRD
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateBRD(
+  taskDescription: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Generating Business Requirements Document...`).start();
+
   try {
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
-    
-    const systemInstruction = `
+
+    const prompt = `
 You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 1: DISCOVERY & BRD.
 
@@ -80,28 +99,31 @@ YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('brd-template.md')}
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.2 }
-    }));
-
-    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the BRD.'));
-    return response.text || '';
+    const result = await adapter.generate(prompt, 0.2);
+    spinner.succeed(chalk.green(`${tag} BRD generated successfully.`));
+    return result;
   } catch (error: any) {
-    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate BRD.'));
+    spinner.fail(chalk.red(`${tag} Failed to generate BRD.`));
     throw error;
   }
 }
 
-export async function generateDesignSpec(brdContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
-  const spinner = ora('Gemini 3.1 Pro is designing the UI/UX & Design System...').start();
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 1.5 — DESIGN SPEC
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateDesignSpec(
+  brdContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Designing UI/UX & Design System...`).start();
+
   try {
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
-    
-    const systemInstruction = `
+
+    const prompt = `
 You are the Design Lead of the Ceobe AI Engineering System.
 STAGE 1.5: UI/UX & DESIGN SYSTEM.
 
@@ -115,34 +137,38 @@ ${brdContent}
 
 Output ONLY the markdown Design Specification based on the BRD. Outline the color palette, typography, core components, and screen layouts. Do not write full code.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the Design Spec and fix the issues mentioned above.\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('design-template.md')}
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.3 }
-    }));
-
-    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the Design Spec.'));
-    return response.text || '';
+    const result = await adapter.generate(prompt, 0.3);
+    spinner.succeed(chalk.green(`${tag} Design Spec generated successfully.`));
+    return result;
   } catch (error: any) {
-    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate Design Spec.'));
+    spinner.fail(chalk.red(`${tag} Failed to generate Design Spec.`));
     throw error;
   }
 }
 
-export async function generateArchitecture(brdContent: string, designContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
-  const spinner = ora('Gemini 3.1 Pro is designing the System Architecture...').start();
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 2 — ARCHITECTURE
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateArchitecture(
+  brdContent: string,
+  designContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Designing System Architecture...`).start();
+
   try {
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
-    
-    const systemInstruction = `
+
+    const prompt = `
 You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 2: ARCHITECTURE DESIGN.
 
@@ -157,36 +183,39 @@ ${brdContent}
 Current Design Context:
 ${designContent}
 
-Output ONLY the markdown Architecture Document based on the constraints. Outline the tech stack, data schemas, and folder structures. Do not write full code.
+Output ONLY the markdown Architecture Document. Outline the tech stack, data schemas, and folder structures. Do not write full code.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the Architecture Plan and fix the issues mentioned above.\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('architecture-template.md')}
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.2 }
-    }));
-
-    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the Architecture Plan.'));
-    return response.text || '';
+    const result = await adapter.generate(prompt, 0.2);
+    spinner.succeed(chalk.green(`${tag} Architecture Plan generated successfully.`));
+    return result;
   } catch (error: any) {
-    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate Architecture Plan.'));
+    spinner.fail(chalk.red(`${tag} Failed to generate Architecture Plan.`));
     throw error;
   }
 }
 
-export async function generateImplementationPlan(architectureContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
-  const spinner = ora('Gemini 3.1 Pro is generating the Execution Checklist...').start();
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 3 — IMPLEMENTATION PLAN
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateImplementationPlan(
+  architectureContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Generating Execution Checklist...`).start();
+
   try {
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
-    
-    const systemInstruction = `
+
+    const prompt = `
 You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 3: IMPLEMENTATION / SPRINT PLANNING.
 
@@ -198,36 +227,40 @@ ${skillsContext}
 Current Architecture Plan Context:
 ${architectureContent}
 
-Output ONLY the markdown execution checklist (a Jira-like task list). Detail what file paths to create/edit and exactly what code Claude should write in each file.
+Output ONLY the markdown execution checklist (a Jira-like task list). Detail what file paths to create/edit and exactly what code the Executor AI should write in each file.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the Task Plan and fix the issues mentioned above.\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('tasks-template.md')}
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.2 }
-    }));
-
-    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the Execution Checklist.'));
-    return response.text || '';
+    const result = await adapter.generate(prompt, 0.2);
+    spinner.succeed(chalk.green(`${tag} Execution Checklist generated successfully.`));
+    return result;
   } catch (error: any) {
-    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate Checklist.'));
+    spinner.fail(chalk.red(`${tag} Failed to generate Checklist.`));
     throw error;
   }
 }
 
-export async function generateDevOpsConfig(architectureContent: string, taskContent: string, selectedSkills: string[] = [], auditorFeedback?: string): Promise<string> {
-  const spinner = ora('Gemini 3.1 Pro is generating the DevOps & Deployment Config...').start();
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 5 — DEVOPS
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateDevOpsConfig(
+  architectureContent: string,
+  taskContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Generating DevOps & Deployment Config...`).start();
+
   try {
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
-    
-    const systemInstruction = `
+
+    const prompt = `
 You are the DevOps Lead of the Ceobe AI Engineering System.
 STAGE 5: DEVOPS & INFRASTRUCTURE.
 
@@ -242,36 +275,38 @@ ${architectureContent}
 Current Task Plan Context:
 ${taskContent}
 
-Output ONLY the markdown DevOps Specification. Outline the environment variables, Docker configuration, CI/CD pipeline, and production readiness checklist. Do not write full code.
+Output ONLY the markdown DevOps Specification. Outline environment variables, Docker config, CI/CD pipeline, and production readiness checklist. Do not write full code.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the DevOps Spec and fix the issues mentioned above.\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('devops-template.md')}
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.2 }
-    }));
-
-    spinner.succeed(chalk.green('Gemini 3.1 Pro successfully generated the DevOps Spec.'));
-    return response.text || '';
+    const result = await adapter.generate(prompt, 0.2);
+    spinner.succeed(chalk.green(`${tag} DevOps Spec generated successfully.`));
+    return result;
   } catch (error: any) {
-    spinner.fail(chalk.red('Gemini 3.1 Pro failed to generate DevOps Spec.'));
+    spinner.fail(chalk.red(`${tag} Failed to generate DevOps Spec.`));
     throw error;
   }
 }
 
-export async function auditPlan(combinedContent: string, selectedSkills: string[] = []): Promise<{ passed: boolean, feedback?: string }> {
-  const spinner = ora('Gemini 3.1 Pro is auditing the project plans for conflicts and rule violations...').start();
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 4 — AUDIT
+// ─────────────────────────────────────────────────────────────────────────────
+export async function auditPlan(
+  combinedContent: string,
+  selectedSkills: string[] = []
+): Promise<{ passed: boolean; feedback?: string }> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Auditing project plans for conflicts and rule violations...`).start();
+
   try {
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
-    
-    const systemInstruction = `
+
+    const prompt = `
 You are the Lead Quality Assurance Auditor for the Ceobe AI Engineering System.
 STAGE 4: PLAN AUDIT & VALIDATION.
 
@@ -280,39 +315,31 @@ ${rules}
 
 ${skillsContext}
 
-Below is the combined content of the BRD, Design Spec, Architecture, and Task execution plan that the user has manually reviewed and potentially edited.
-
-Combined Content:
+Combined Content (BRD + Design + Architecture + Task Plan):
 ${combinedContent}
 
 Your Job:
 1. Verify if the Architecture contradicts the BRD or Design.
 2. Verify if the Task List executes everything required by the Architecture and Design.
-3. Verify if anything in the plans violates the core Ceobe Engineering Rules or the provided Skills constraints (e.g. using npm when bun-developer is active).
+3. Verify if anything in the plans violates the Ceobe Engineering Rules or Skills constraints.
 
-If the plans are 100% solid and ready for execution, reply ABSOLUTELY ONLY with the word: "APPROVED".
-If there are critical conflicts, bugs, or missing steps, reply with a markdown list of the mandatory changes needed. Do NOT say "APPROVED" if there are warnings.
+If the plans are 100% solid, reply ONLY with the word: "APPROVED".
+If there are critical conflicts or missing steps, reply with a markdown list of mandatory changes. Do NOT say "APPROVED" if there are issues.
 `;
 
-    const response = await withRetry(() => getGeminiClient().models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [ { role: 'user', parts: [{ text: systemInstruction }] } ],
-        config: { temperature: 0.1 }
-    }));
-
-    const output = (response.text || '').trim();
+    const output = await adapter.generate(prompt, 0.1);
     if (output === 'APPROVED') {
-      spinner.succeed(chalk.green('Audit PASSED. Project blueprint is solid and ready for execution.'));
+      spinner.succeed(chalk.green('Audit PASSED. Blueprint is ready for execution.'));
       return { passed: true };
     } else {
       spinner.warn(chalk.yellow('Audit FAILED. Conflicts or missing steps detected.'));
-      console.log(chalk.cyan(`\n--- Auditor Feedback ---\n`));
+      console.log(chalk.cyan('\n--- Auditor Feedback ---\n'));
       console.log(output);
-      console.log(chalk.cyan(`\n-------------------------\n`));
+      console.log(chalk.cyan('\n-------------------------\n'));
       return { passed: false, feedback: output };
     }
   } catch (error: any) {
-    spinner.fail(chalk.red('Gemini 3.1 Pro failed to audit the plans.'));
+    spinner.fail(chalk.red(`${tag} Failed to audit the plans.`));
     throw error;
   }
 }

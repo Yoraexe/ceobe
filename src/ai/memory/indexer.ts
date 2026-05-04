@@ -7,7 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { env } from '../../config/env';
-import { getGeminiClient } from '../geminiClient';
+import { createEmbeddingAdapter } from '../providers/embeddingAdapter';
 import { saveEmbeddings, CodeChunk, loadEmbeddings } from './vectorStore';
 import { withRetry } from '../../utils/retry';
 import chalk from 'chalk';
@@ -70,12 +70,8 @@ function getAllFiles(dir: string, fileList: string[] = []): string[] {
 }
 
 export async function getEmbedding(text: string): Promise<number[]> {
-  const client = getGeminiClient();
-  const response = await withRetry(() => client.models.embedContent({
-    model: 'text-embedding-004',
-    contents: text
-  }));
-  return response.embeddings?.[0]?.values || [];
+  const adapter = createEmbeddingAdapter();
+  return adapter.getEmbedding(text);
 }
 
 export async function indexWorkspace(): Promise<void> {

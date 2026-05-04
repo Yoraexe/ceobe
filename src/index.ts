@@ -11,18 +11,24 @@ import { indexWorkspace } from './ai/memory/indexer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { markPhaseComplete } from './utils/stateManager';
+import { setMode, getActiveMode, printModeBadge, type CeobeMode } from './utils/modeManager';
+import {
+  setKey, removeKey, findKeyDef, printKeyTable,
+  runSetupWizard, KEY_DEFINITIONS,
+} from './utils/keyManager';
 
 const program = new Command();
 
 program
   .name('ceobe')
-  .description('Ceobe CLI: An AI Engineering orchestrator using Gemini 3.1 Pro and Sonnet 4.6 via Cloudflare AI Gateway.')
-  .version('1.2.0');
+  .description('Ceobe CLI: An AI Engineering orchestrator. Polyglot, multi-provider, with Autonomous & Ask modes.')
+  .version('1.3.0');
 
 program
   .command('plan <description>')
   .description('Phase 1: Generate BRD, Architecture, and Task Plan for review.')
   .action(async (description: string) => {
+    printModeBadge();
     console.log(chalk.blue(`Planning project with description: ${description}`));
     console.log(chalk.gray(`Workspace: ${env.TARGET_PROJECT_DIR}\n`));
     
@@ -59,6 +65,7 @@ program
   .command('execute [taskFile]')
   .description('Phase 2: Execute a generated task plan (default: task.md).')
   .action(async (taskFile: string = 'task.md') => {
+    printModeBadge();
     console.log(chalk.blue(`Executing plan from: .ceobe/${taskFile}`));
     
     try {
@@ -84,6 +91,7 @@ program
   .command('audit [prefix]')
   .description('Phase 1.5: Audit your edited plans for conflicts before execution. Prefix is empty for new projects, or "feature-" for features.')
   .action(async (prefix: string = '') => {
+    printModeBadge();
     console.log(chalk.blue(`Auditing plans in .ceobe/ folder with prefix '${prefix}'...`));
     
     try {
@@ -131,6 +139,7 @@ program
   .command('build-feature <description>')
   .description('Build a new feature following Ceobe engineering rules.')
   .action(async (description: string) => {
+    printModeBadge();
     console.log(chalk.blue(`Building feature with description: ${description}`));
     console.log(chalk.gray(`Workspace: ${env.TARGET_PROJECT_DIR}\n`));
     
@@ -181,6 +190,88 @@ program
       await indexWorkspace();
     } catch (err) {
       console.error(chalk.red('\n[Error] Failed to index workspace.'));
+    }
+  });
+
+program
+  .command('mode [newMode]')
+  .description('Tampilkan atau ubah mode operasi Ceobe. Mode: autonomous (otonom) | ask (bertanya).')
+  .action((newMode?: string) => {
+    if (!newMode) {
+      // Display current mode
+      const current = getActiveMode();
+      console.log(chalk.bold('\nMode Aktif Ceobe:'));
+      printModeBadge();
+      console.log(chalk.gray('Untuk mengubah mode, jalankan:'));
+      console.log(chalk.cyan('  ceobe mode autonomous') + chalk.gray('  → Eksekusi mandiri tanpa konfirmasi'));
+      console.log(chalk.cyan('  ceobe mode ask') + chalk.gray('        → Minta persetujuan sebelum setiap aksi\n'));
+      return;
+    }
+
+    const validModes: CeobeMode[] = ['autonomous', 'ask'];
+    if (!validModes.includes(newMode as CeobeMode)) {
+      console.error(chalk.red(`[Error] Mode tidak valid: '${newMode}'. Pilih: autonomous | ask`));
+      process.exit(1);
+    }
+
+    setMode(newMode as CeobeMode);
+    console.log(chalk.bold('\n✅ Mode berhasil diubah!'));
+    printModeBadge();
+  });
+
+// ── ceobe setup ───────────────────────────────────────────────────────────────
+program
+  .command('setup')
+  .description('Jalankan wizard interaktif untuk mengatur semua API key yang dibutuhkan Ceobe.')
+  .action(async () => {
+    await runSetupWizard();
+  });
+
+// ── ceobe key ─────────────────────────────────────────────────────────────────
+const keyCmd = program
+  .command('key')
+  .description('Kelola API key Ceobe yang tersimpan di ~/.ceobe/keys.json');
+
+keyCmd
+  .command('list')
+  .description('Tampilkan semua API key yang sudah dikonfigurasi.')
+  .action(() => {
+    printKeyTable();
+  });
+
+keyCmd
+  .command('set <provider> <value>')
+  .description(
+    'Simpan API key untuk provider tertentu.\n' +
+    '  Provider: gemini, anthropic, glm, kimi, deepseek, groq, openai, qwen, together\n' +
+    '  Contoh: ceobe key set gemini AIzaSy...'
+  )
+  .action((provider: string, value: string) => {
+    const def = findKeyDef(provider);
+    if (!def) {
+      const available = KEY_DEFINITIONS.map(d => d.provider).join(', ');
+      console.error(chalk.red(`[Error] Provider '${provider}' tidak dikenali.`));
+      console.error(chalk.yellow(`Provider yang tersedia: ${available}`));
+      process.exit(1);
+    }
+    setKey(def.envKey, value);
+    console.log(chalk.green(`\n✅ ${def.label} (${def.envKey}) berhasil disimpan di ~/.ceobe/keys.json\n`));
+  });
+
+keyCmd
+  .command('remove <provider>')
+  .description('Hapus API key untuk provider tertentu dari penyimpanan Ceobe.')
+  .action((provider: string) => {
+    const def = findKeyDef(provider);
+    if (!def) {
+      console.error(chalk.red(`[Error] Provider '${provider}' tidak dikenali.`));
+      process.exit(1);
+    }
+    const removed = removeKey(def.envKey);
+    if (removed) {
+      console.log(chalk.green(`\n✅ ${def.envKey} berhasil dihapus dari ~/.ceobe/keys.json\n`));
+    } else {
+      console.log(chalk.yellow(`\n⚠️  ${def.envKey} tidak ditemukan di penyimpanan Ceobe.\n`));
     }
   });
 

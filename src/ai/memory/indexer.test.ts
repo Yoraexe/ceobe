@@ -8,13 +8,11 @@ vi.mock('../../config/env', () => ({
   env: { TARGET_PROJECT_DIR: '/mock/workspace' }
 }));
 
-export const mockEmbedContent = vi.fn().mockResolvedValue({
-  embeddings: [{ values: [0.1, 0.2] }]
-});
-
-vi.mock('../geminiClient', () => ({
-  getGeminiClient: vi.fn().mockReturnValue({
-    models: { embedContent: (...args: any[]) => mockEmbedContent(...args) }
+vi.mock('../providers/embeddingAdapter', () => ({
+  createEmbeddingAdapter: vi.fn().mockReturnValue({
+    name: 'test',
+    modelId: 'test-model',
+    getEmbedding: vi.fn().mockResolvedValue([0.1, 0.2])
   })
 }));
 
@@ -61,7 +59,7 @@ describe('indexer', () => {
     
     await indexWorkspace();
     
-    expect(mockEmbedContent).toHaveBeenCalled();
+    // The embedding adapter should have been called (implied by savedChunks having the mocked vector)
     expect(saveSpy).toHaveBeenCalled();
     
     // Verify arguments passed to saveEmbeddings
