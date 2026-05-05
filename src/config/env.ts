@@ -83,7 +83,7 @@ export function loadEnv(): EnvConfig {
   const config: EnvConfig = {
     CLOUDFLARE_ACCOUNT_ID: getOptional('CLOUDFLARE_ACCOUNT_ID'),
     CLOUDFLARE_GATEWAY_ID: getOptional('CLOUDFLARE_GATEWAY_ID'),
-    // All keys are optional here — validation is done per-provider in router/plannerAdapter
+    // All keys are optional here — validation is done per-provider in router
     GEMINI_API_KEY: getOptional('GEMINI_API_KEY'),
     ANTHROPIC_API_KEY: getOptional('ANTHROPIC_API_KEY'),
     // Planner provider routing (defaults to Gemini)
@@ -120,6 +120,18 @@ export function loadEnv(): EnvConfig {
   }
 
   return config;
+}
+
+/**
+ * Constructs the Cloudflare AI Gateway URL for a given provider.
+ * Returns an empty string if Cloudflare credentials are not configured.
+ */
+export function getGatewayUrl(provider: 'google-genai' | '@google/genai' | 'anthropic'): string {
+  if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_GATEWAY_ID) {
+    return '';
+  }
+  const slug = provider.includes('/') ? provider.split('/')[1] : provider;
+  return `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.CLOUDFLARE_GATEWAY_ID}/${slug}`;
 }
 
 export const env = loadEnv();

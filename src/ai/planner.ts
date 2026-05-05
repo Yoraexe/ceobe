@@ -2,20 +2,21 @@
 // Purpose: Orchestrates all planning phases (BRD, Design, Architecture, Tasks, DevOps, Audit).
 //          Provider-agnostic: uses createPlannerAdapter() which reads CEOBE_PLANNER_PROVIDER.
 // Caller: src/index.ts, src/ai/supervisor.ts
-// Dependencies: providers/plannerAdapter, contextLoader, chalk, ora
+// Dependencies: providers/router, contextLoader, chalk, ora
 // Side Effects: HTTP requests to the configured planner AI provider
 
-import { createPlannerAdapter } from './providers/plannerAdapter';
+import { createProviderAdapter } from './providers/router';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readCeobeRules, readTemplate, getAvailableSkills, readSpecificSkills } from '../utils/contextLoader';
 import { withRetry } from '../utils/retry';
+import type { NormalizedContentBlock } from './providers/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper — gets a ready-to-use planner adapter and its display name
 // ─────────────────────────────────────────────────────────────────────────────
 function getPlanner() {
-  const adapter = createPlannerAdapter();
+  const adapter = createProviderAdapter('planner');
   const tag = `[${adapter.name.toUpperCase()} / ${adapter.modelId}]`;
   return { adapter, tag };
 }
@@ -23,7 +24,7 @@ function getPlanner() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PHASE 0 — SKILL CLASSIFICATION
 // ─────────────────────────────────────────────────────────────────────────────
-export async function selectRelevantSkills(taskDescription: string): Promise<string[]> {
+export async function selectRelevantSkills(taskDescription: string | NormalizedContentBlock[]): Promise<string[]> {
   const { adapter, tag } = getPlanner();
   const spinner = ora(`${tag} Analyzing required skills...`).start();
 
@@ -34,7 +35,8 @@ export async function selectRelevantSkills(taskDescription: string): Promise<str
       return [];
     }
 
-    const prompt = `
+    const prompt: string | any[] = typeof taskDescription === 'string'
+      ? `
 You are the Ceobe AI Skill Router.
 Your ONLY job is to analyze the user request and determine which internal skills are required.
 
@@ -47,7 +49,11 @@ ${taskDescription}
 Output ONLY a raw, comma-separated list of the exact skill names required. If none apply, output "none".
 Example: "cost-reducer, scalability, frontend-design"
 NO markdown, NO greetings, NO extra text.
-`;
+`
+      : [
+          { type: 'text', text: `You are the Ceobe AI Skill Router. Analyze the text and image to determine required skills.\nAvailable Skills: ${availableSkills.join(', ')}\nOutput ONLY a raw, comma-separated list.` },
+          ...taskDescription
+        ];
 
     const output = await adapter.generate(prompt, 0.0);
     if (output.toLowerCase() === 'none') {
@@ -68,7 +74,7 @@ NO markdown, NO greetings, NO extra text.
 // PHASE 1 — BRD
 // ─────────────────────────────────────────────────────────────────────────────
 export async function generateBRD(
-  taskDescription: string,
+  taskDescription: string | NormalizedContentBlock[],
   selectedSkills: string[] = [],
   auditorFeedback?: string
 ): Promise<string> {
@@ -79,7 +85,7 @@ export async function generateBRD(
     const rules = readCeobeRules();
     const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
 
-    const prompt = `
+    const basePrompt = `
 You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 1: DISCOVERY & BRD.
 
@@ -88,16 +94,29 @@ ${rules}
 
 ${skillsContext}
 
-User Request:
-${taskDescription}
+User Input (Description, Image, or External Document):
+${typeof taskDescription === 'string' ? taskDescription : '(See attached image/blocks for input)'}
 
-Output ONLY the markdown Business Requirements Document (BRD). Do not output greetings or implementation steps yet. Focus on goals, target audience, and feature definitions.
+Your Job:
+1. If the input is a short description or an IMAGE (like a UI mockup), generate a full BRD.
+2. If it's an image, analyze the visual structure, components, and UX flow to define the requirements.
+3. If the input is an existing document, STANDARDIZE it.
+4. Fill any gaps using your senior engineering expertise.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Your previous attempt was rejected):\n${auditorFeedback}\n\nPlease regenerate the BRD and fix the issues mentioned above.\n` : ''}
+Output ONLY the markdown Business Requirements Document (BRD).
+
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('brd-template.md')}
 `;
+
+    const prompt: string | any[] = typeof taskDescription === 'string'
+      ? basePrompt
+      : [
+          { type: 'text', text: basePrompt },
+          ...taskDescription
+        ];
 
     const result = await adapter.generate(prompt, 0.2);
     spinner.succeed(chalk.green(`${tag} BRD generated successfully.`));

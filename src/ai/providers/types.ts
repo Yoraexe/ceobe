@@ -20,7 +20,7 @@ export interface NormalizedContentBlock {
   input?: Record<string, unknown>;
   tool_use_id?: string;
   text?: string;
-  content?: string;
+  content?: string | any[];
   // For multimodal
   source?: {
     type: 'base64';
@@ -63,4 +63,5 @@ export interface IProviderAdapter {
     tools: NormalizedTool[],
     systemInstruction: string
   ): Promise<NormalizedResponse>;
+  generate(prompt: string | NormalizedContentBlock[], temperature?: number): Promise<string>;
 }

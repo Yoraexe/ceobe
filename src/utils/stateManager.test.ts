@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import { readState, writeState, markPhaseComplete } from './stateManager';
+import { readState, writeState, markPhaseComplete, markFileComplete, getCompletedFiles } from './stateManager';
 
 vi.mock('fs');
 vi.mock('../config/env', () => ({
@@ -56,5 +56,24 @@ describe('stateManager', () => {
     markPhaseComplete('plan', 'execute');
     
     expect(writeFileSyncMock).toHaveBeenCalledWith(expect.stringContaining('.json'), expect.stringContaining('"execute"'), 'utf8');
+  });
+
+  it('markPhaseComplete should update phases', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    markPhaseComplete('plan', 'execute');
+    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.stringContaining('state.json'), expect.stringContaining('execute'), 'utf8');
+  });
+
+  it('markFileComplete should update files list', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    markFileComplete('src/index.ts');
+    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.stringContaining('state.json'), expect.stringContaining('src/index.ts'), 'utf8');
+  });
+
+  it('getCompletedFiles should return list from state', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ completedFiles: ['f1.ts'] }));
+    const files = getCompletedFiles();
+    expect(files).toContain('src/index.ts');
   });
 });

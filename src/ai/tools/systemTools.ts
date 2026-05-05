@@ -11,7 +11,7 @@ import { promisify } from 'util';
 import { env } from '../../config/env';
 import { searchEmbeddings } from '../memory/vectorStore';
 import { getEmbedding } from '../memory/indexer';
-import { captureScreenshot } from '../../utils/browserAutomation';
+import { captureScreenshot, executeBrowserInteraction, BrowserAction } from '../../utils/browserAutomation';
 import { markFileComplete } from '../../utils/stateManager';
 
 const execAsync = promisify(exec);
@@ -264,13 +264,28 @@ export const tools = [
   },
   {
     name: 'visual_audit',
-    description: 'Launches a headless browser to open a specific URL or local HTML file, takes a screenshot, and returns the image back to you for visual inspection. Use this to verify CSS, layout overlap, and responsive design.',
+    description: 'Launches a headless browser to open a URL or local file, executes optional interactive actions, and returns a screenshot + logs. Use this to verify UI, test user flows, and debug frontend errors.',
     input_schema: {
       type: 'object',
       properties: {
         url_or_path: {
           type: 'string',
-          description: 'The URL (e.g. http://localhost:5173) or local file path to the HTML file.'
+          description: 'The URL or local file path.'
+        },
+        actions: {
+          type: 'array',
+          description: 'Optional list of actions to perform (click, type, wait, press, scroll).',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['click', 'type', 'wait', 'press', 'scroll'] },
+              selector: { type: 'string', description: 'CSS selector for the element.' },
+              text: { type: 'string', description: 'Text to type.' },
+              key: { type: 'string', description: 'Key to press (Enter, Escape, etc.).' },
+              ms: { type: 'number', description: 'Milliseconds to wait.' }
+            },
+            required: ['type']
+          }
         }
       },
       required: ['url_or_path']
@@ -514,12 +529,23 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
 
       case 'visual_audit': {
         try {
-          const result = await captureScreenshot(input.url_or_path);
-          // Return an array of content blocks for multimodal response
+          let target = input.url_or_path;
+          // If it's not a URL, validate it as a local path
+          if (!target.startsWith('http://') && !target.startsWith('https://')) {
+            target = validatePath(target);
+          }
+          
+          const result = await executeBrowserInteraction(target, input.actions || []);
+          
+          let logSummary = '';
+          if (result.logs && result.logs.length > 0) {
+            logSummary = `\n[BROWSER LOGS]\n${result.logs.join('\n')}\n`;
+          }
+
           return [
             {
               type: 'text',
-              text: `Successfully captured screenshot of ${result.url}. Inspect the image below.`
+              text: `Captured ${result.url}. ${logSummary}\n[PAGE CONTENT PREVIEW]\n${result.content?.substring(0, 500)}...`
             },
             {
               type: 'image',
@@ -531,7 +557,7 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
             }
           ];
         } catch (e: any) {
-          return `Error capturing screenshot: ${e.message}`;
+          return `Error during visual audit: ${e.message}`;
         }
       }
 

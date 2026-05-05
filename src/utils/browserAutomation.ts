@@ -13,13 +13,28 @@ export interface ScreenshotResult {
   base64Data: string;
   mediaType: string;
   url: string;
+  logs?: string[];
+  content?: string;
+}
+
+export interface BrowserAction {
+  type: 'click' | 'type' | 'wait' | 'press' | 'scroll';
+  selector?: string;
+  text?: string;
+  key?: string;
+  ms?: number;
 }
 
 export async function captureScreenshot(urlOrPath: string): Promise<ScreenshotResult> {
-  // Determine if it's a URL or a local file path
+  return executeBrowserInteraction(urlOrPath, []);
+}
+
+export async function executeBrowserInteraction(
+  urlOrPath: string,
+  actions: BrowserAction[]
+): Promise<ScreenshotResult> {
   let targetUrl = urlOrPath;
   if (!urlOrPath.startsWith('http://') && !urlOrPath.startsWith('https://')) {
-    // If it's a local path, ensure it exists and convert to file:// URL
     const fullPath = path.resolve(env.TARGET_PROJECT_DIR, urlOrPath);
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found: ${fullPath}`);
@@ -29,23 +44,71 @@ export async function captureScreenshot(urlOrPath: string): Promise<ScreenshotRe
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
+
+  const logs: string[] = [];
 
   try {
     const page = await browser.newPage();
-    // Set standard desktop viewport
     await page.setViewport({ width: 1280, height: 800 });
-    
+
+    // Capture console logs
+    page.on('console', msg => logs.push(`[${msg.type()}] ${msg.text()}`));
+    page.on('pageerror', (err: any) => logs.push(`[error] ${err.message}`));
+
     await page.goto(targetUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-    
+
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case 'click':
+            if (action.selector) {
+              await page.waitForSelector(action.selector, { timeout: 5000 });
+              await page.click(action.selector);
+            }
+            break;
+          case 'type':
+            if (action.selector && action.text) {
+              await page.waitForSelector(action.selector, { timeout: 5000 });
+              await page.type(action.selector, action.text);
+            }
+            break;
+          case 'wait':
+            if (action.selector) {
+              await page.waitForSelector(action.selector, { timeout: 10000 });
+            } else if (action.ms) {
+              await new Promise(r => setTimeout(r, action.ms));
+            }
+            break;
+          case 'press':
+            if (action.key) {
+              await page.keyboard.press(action.key as any);
+            }
+            break;
+          case 'scroll':
+            await page.evaluate(() => window.scrollBy(0, 500));
+            break;
+        }
+        // Small wait after each action for transitions
+        await new Promise(r => setTimeout(r, 500));
+      } catch (err: any) {
+        logs.push(`[action-error] Failed ${action.type} on ${action.selector}: ${err.message}`);
+      }
+    }
+
     const screenshotBuffer = await page.screenshot({ fullPage: true, type: 'png' });
     const base64Data = Buffer.from(screenshotBuffer).toString('base64');
     
+    // Extract text content for context
+    const content = await page.evaluate(() => document.body.innerText.substring(0, 5000));
+
     return {
       base64Data,
       mediaType: 'image/png',
-      url: targetUrl
+      url: page.url(),
+      logs,
+      content
     };
   } finally {
     await browser.close();

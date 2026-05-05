@@ -16,6 +16,7 @@ import {
   setKey, removeKey, findKeyDef, printKeyTable,
   runSetupWizard, KEY_DEFINITIONS,
 } from './utils/keyManager';
+import { runDoctor } from './utils/doctor';
 
 const program = new Command();
 
@@ -25,38 +26,80 @@ program
   .version('1.3.0');
 
 program
-  .command('plan <description>')
-  .description('Phase 1: Generate BRD, Architecture, and Task Plan for review.')
-  .action(async (description: string) => {
+  .command('plan [description]')
+  .description('Phase 1: Generate BRD, Architecture, and Task Plan. Use --feature for incremental builds.')
+  .option('--feature', 'Plan as a new feature instead of a new project', false)
+  .option('--file <path>', 'Use an external PRD/BRD file as the source')
+  .action(async (description: string | undefined, options: { feature: boolean, file?: string }) => {
     printModeBadge();
-    console.log(chalk.blue(`Planning project with description: ${description}`));
-    console.log(chalk.gray(`Workspace: ${env.TARGET_PROJECT_DIR}\n`));
+    const prefix = options.feature ? 'feature-' : '';
     
+    let finalDescription: string | any[] = description || '';
+    if (options.file) {
+      const filePath = path.isAbsolute(options.file) ? options.file : path.join(process.cwd(), options.file);
+      if (!fs.existsSync(filePath)) {
+        console.error(chalk.red(`\n[Error] File tidak ditemukan: ${filePath}`));
+        return;
+      }
+      
+      const ext = path.extname(filePath).toLowerCase();
+      const isImage = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
+      
+      if (isImage) {
+        console.log(chalk.blue(`Reading UI Mockup from image: ${filePath}`));
+        const base64Data = fs.readFileSync(filePath).toString('base64');
+        const mimeType = ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
+        
+        finalDescription = [
+          { type: 'text', text: `Attached is a UI mockup/screenshot for the project requirements. Analyze this visual input along with any description provided: ${description || ''}` },
+          { 
+            type: 'image', 
+            source: { 
+              type: 'base64', 
+              media_type: mimeType, 
+              data: base64Data 
+            } 
+          }
+        ];
+      } else {
+        console.log(chalk.blue(`Reading PRD from file: ${filePath}`));
+        finalDescription = fs.readFileSync(filePath, 'utf8');
+      }
+    }
+
+    if (!finalDescription || (Array.isArray(finalDescription) && finalDescription.length === 0)) {
+      console.error(chalk.red('\n[Error] Silakan masukkan deskripsi atau gunakan opsi --file <path>.'));
+      return;
+    }
+
+    console.log(chalk.magenta.bold(`\n🚀 [Ceobe Planner] Planning ${options.feature ? 'Feature' : 'New Project'}\n`));
+    console.log(chalk.gray(`Workspace: ${process.cwd()}\n`));
+
     try {
       const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
       if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
-      const selectedSkills = await selectRelevantSkills(description);
+      const selectedSkills = await selectRelevantSkills(finalDescription);
 
-      const brd = await generateBRD(description, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'brd.md'), brd);
+      const brd = await generateBRD(finalDescription, selectedSkills);
+      fs.writeFileSync(path.join(ceobeDir, `${prefix}brd.md`), brd);
 
       const design = await generateDesignSpec(brd, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'design.md'), design);
+      fs.writeFileSync(path.join(ceobeDir, `${prefix}design.md`), design);
 
       const arch = await generateArchitecture(brd, design, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'architecture.md'), arch);
+      fs.writeFileSync(path.join(ceobeDir, `${prefix}architecture.md`), arch);
 
       const plan = await generateImplementationPlan(arch, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'task.md'), plan);
+      fs.writeFileSync(path.join(ceobeDir, `${prefix}task.md`), plan);
       
-      markPhaseComplete('plan', 'audit');
+      markPhaseComplete(options.feature ? 'build-feature' : 'plan', 'audit');
       
       console.log(chalk.magenta(`\n[Planning Phase Complete] Documents saved to .ceobe/ folder.`));
-      console.log(chalk.yellow(`Please review brd.md, design.md, architecture.md, and task.md.`));
-      console.log(chalk.green(`Once approved, run: npx ceobe execute\n`));
+      console.log(chalk.yellow(`Please review ${prefix}brd.md, ${prefix}design.md, ${prefix}architecture.md, and ${prefix}task.md.`));
+      console.log(chalk.green(`Once approved, run: npx ceobe audit ${options.feature ? 'feature-' : ''}\n`));
     } catch (err) {
-      console.error(chalk.red('\n[Error] Project planning failed.'));
+      console.error(chalk.red('\n[Error] Planning failed.'));
       console.error(err);
     }
   });
@@ -77,7 +120,7 @@ program
       }
 
       const planContent = fs.readFileSync(taskPath, 'utf8');
-      console.log(chalk.magenta(`\n[Execution Phase Started. Firing up Sonnet 4.6]\n`));
+      console.log(chalk.magenta(`\n[Execution Phase Started]\n`));
       await executePlan(planContent);
       
       markPhaseComplete('execute', 'done');
@@ -136,49 +179,98 @@ ${fs.readFileSync(taskPath, 'utf8')}
   });
 
 program
-  .command('build-feature <description>')
-  .description('Build a new feature following Ceobe engineering rules.')
-  .action(async (description: string) => {
-    printModeBadge();
-    console.log(chalk.blue(`Building feature with description: ${description}`));
-    console.log(chalk.gray(`Workspace: ${env.TARGET_PROJECT_DIR}\n`));
-    
-    try {
-      const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
-      if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
-
-      const selectedSkills = await selectRelevantSkills(description);
-
-      const brd = await generateBRD(description, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'feature-brd.md'), brd);
-
-      const design = await generateDesignSpec(brd, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'feature-design.md'), design);
-
-      const arch = await generateArchitecture(brd, design, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'feature-architecture.md'), arch);
-
-      const plan = await generateImplementationPlan(arch, selectedSkills);
-      fs.writeFileSync(path.join(ceobeDir, 'feature-task.md'), plan);
-      
-      markPhaseComplete('build-feature', 'audit');
-      
-      console.log(chalk.magenta(`\n[Feature Blueprint Complete] Documents saved to .ceobe/ folder.`));
-      console.log(chalk.yellow(`Please review feature-brd.md, feature-design.md, feature-architecture.md, and feature-task.md.`));
-      console.log(chalk.green(`Once approved, run: npx ceobe execute feature-task.md\n`));
-    } catch (err) {
-      console.error(chalk.red('\n[Error] Feature build failed.'));
-      console.error(err);
-    }
+  .command('doctor')
+  .description('Diagnose system health, API connectivity, and workspace status.')
+  .action(async () => {
+    await runDoctor();
   });
 
 program
-  .command('auto <description>')
+  .command('reset')
+  .description('DANGEROUS: Clear the .ceobe/ directory and reset the workspace state.')
+  .option('--yes', 'Skip confirmation prompt', false)
+  .action(async (options: { yes: boolean }) => {
+    const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+    if (!fs.existsSync(ceobeDir)) {
+      console.log(chalk.yellow('\n[Info] Folder .ceobe/ tidak ditemukan. Workspace sudah bersih.\n'));
+      return;
+    }
+
+    if (!options.yes) {
+      console.log(chalk.red.bold('\n⚠️  WARNING: Ini akan menghapus SEMUA rencana, arsitektur, dan log di .ceobe/'));
+      console.log(chalk.yellow('Perubahan pada source code Anda TETAP AMAN.\n'));
+      // Since this is a CLI action, we'd usually use a prompt library, 
+      // but for simplicity in this context we'll ask the user to use --yes
+      console.log(chalk.gray('Untuk melanjutkan, jalankan: ceobe reset --yes\n'));
+      return;
+    }
+
+    fs.rmSync(ceobeDir, { recursive: true, force: true });
+    console.log(chalk.green('\n✅ Workspace has been reset. All plans and logs cleared.\n'));
+  });
+
+program
+  .command('log')
+  .description('Show the latest execution log from the workspace.')
+  .action(() => {
+    const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
+    if (!fs.existsSync(logPath)) {
+      console.error(chalk.red('\n[Error] No execution log found. Run ceobe execute first.\n'));
+      return;
+    }
+    const content = fs.readFileSync(logPath, 'utf8');
+    console.log(chalk.cyan('\n--- Latest Execution Logs ---\n'));
+    // Show last 50 lines
+    const lines = content.split('\n').slice(-50).join('\n');
+    console.log(lines);
+    console.log(chalk.cyan('\n----------------------------\n'));
+  });
+
+program
+  .command('auto [description]')
   .description('Run the Supervisor Agent to autonomously plan, audit, auto-correct, and execute.')
   .option('--ask', 'Ask for confirmation before executing the plan', false)
   .option('--feature', 'Run as a feature build instead of a new project', false)
-  .action(async (description: string, options: { ask: boolean, feature: boolean }) => {
-    await runAutonomousLoop(description, options.ask, options.feature);
+  .option('--file <path>', 'Use an external PRD/BRD file as the source')
+  .action(async (description: string | undefined, options: { ask: boolean, feature: boolean, file?: string }) => {
+    let finalDescription: string | any[] = description || '';
+    if (options.file) {
+      const filePath = path.isAbsolute(options.file) ? options.file : path.join(process.cwd(), options.file);
+      if (!fs.existsSync(filePath)) {
+        console.error(chalk.red(`\n[Error] File tidak ditemukan: ${filePath}`));
+        return;
+      }
+      
+      const ext = path.extname(filePath).toLowerCase();
+      const isImage = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
+      
+      if (isImage) {
+        console.log(chalk.blue(`Reading UI Mockup from image: ${filePath}`));
+        const base64Data = fs.readFileSync(filePath).toString('base64');
+        const mimeType = ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
+        
+        finalDescription = [
+          { type: 'text', text: `Attached is a UI mockup/screenshot for the project requirements. Analyze this visual input along with any description provided: ${description || ''}` },
+          { 
+            type: 'image', 
+            source: { 
+              type: 'base64', 
+              media_type: mimeType, 
+              data: base64Data 
+            } 
+          }
+        ];
+      } else {
+        console.log(chalk.blue(`Reading PRD from file: ${filePath}`));
+        finalDescription = fs.readFileSync(filePath, 'utf8');
+      }
+    }
+
+    if (!finalDescription || (Array.isArray(finalDescription) && finalDescription.length === 0)) {
+      console.error(chalk.red('\n[Error] Silakan masukkan deskripsi atau gunakan opsi --file <path>.'));
+      return;
+    }
+    await runAutonomousLoop(finalDescription, options.ask, options.feature);
   });
 
 program

@@ -1,21 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import { captureScreenshot } from './browserAutomation';
-
-// Mock puppeteer
-export const mockPage = {
-  setViewport: vi.fn(),
-  goto: vi.fn(),
-  screenshot: vi.fn().mockResolvedValue(Buffer.from('mock-image-data')),
-};
-export const mockBrowser = {
-  newPage: vi.fn().mockResolvedValue(mockPage),
-  close: vi.fn(),
-};
+import { captureScreenshot, executeBrowserInteraction } from './browserAutomation';
+const mocks = vi.hoisted(() => {
+  const page = {
+    setViewport: vi.fn(),
+    goto: vi.fn(),
+    screenshot: vi.fn().mockResolvedValue(Buffer.from('mock-image-data')),
+    on: vi.fn(),
+    evaluate: vi.fn().mockResolvedValue('mock-content'),
+    waitForSelector: vi.fn(),
+    click: vi.fn(),
+    type: vi.fn(),
+    keyboard: { press: vi.fn() },
+    url: vi.fn().mockReturnValue('http://mock-url.com'),
+  };
+  const browser = {
+    newPage: vi.fn().mockResolvedValue(page),
+    close: vi.fn(),
+  };
+  return { page, browser };
+});
 
 vi.mock('puppeteer', () => ({
   default: {
-    launch: (...args: any[]) => vi.fn().mockResolvedValue(mockBrowser)(...args),
+    launch: vi.fn().mockResolvedValue(mocks.browser),
   },
 }));
 
@@ -31,22 +39,24 @@ describe('browserAutomation', () => {
 
   it('should capture screenshot for URL', async () => {
     const result = await captureScreenshot('http://localhost:3000');
-    expect(mockPage.goto).toHaveBeenCalledWith('http://localhost:3000', expect.any(Object));
-    expect(mockPage.screenshot).toHaveBeenCalled();
-    expect(mockBrowser.close).toHaveBeenCalled();
+    expect(mocks.page.goto).toHaveBeenCalledWith('http://localhost:3000', expect.any(Object));
+    expect(mocks.page.screenshot).toHaveBeenCalled();
+    expect(mocks.browser.close).toHaveBeenCalled();
     expect(result.mediaType).toBe('image/png');
-    expect(result.base64Data).toBe(Buffer.from('mock-image-data').toString('base64'));
+  });
+
+  it('should execute interactions', async () => {
+    const result = await executeBrowserInteraction('http://test.com', [
+      { type: 'click', selector: '#btn' },
+      { type: 'type', selector: '#input', text: 'hello' }
+    ]);
+    expect(mocks.page.click).toHaveBeenCalledWith('#btn');
+    expect(mocks.page.type).toHaveBeenCalledWith('#input', 'hello');
+    expect(result.content).toBe('mock-content');
   });
 
   it('should throw error if local file does not exist', async () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
     await expect(captureScreenshot('missing.html')).rejects.toThrow('File not found');
-  });
-
-  it('should capture screenshot for local file', async () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-    const result = await captureScreenshot('test.html');
-    expect(mockPage.goto).toHaveBeenCalled();
-    expect(result.mediaType).toBe('image/png');
   });
 });

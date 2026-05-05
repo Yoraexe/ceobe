@@ -209,10 +209,18 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
           logExecution(`TOOL_CALL: ${block.name} | Input: ${logInputStr}`);
 
           const resultPayload = await handleToolCall(block.name, block.input ?? {});
-          const resultStr =
-            typeof resultPayload === 'string'
+          
+          // Support multimodal results (arrays of content blocks)
+          let resultBlocks: any;
+          if (Array.isArray(resultPayload)) {
+            resultBlocks = resultPayload;
+          } else {
+            resultBlocks = typeof resultPayload === 'string'
               ? resultPayload
               : JSON.stringify(resultPayload);
+          }
+
+          const resultStr = typeof resultBlocks === 'string' ? resultBlocks : JSON.stringify(resultBlocks);
 
           logExecution(
             `TOOL_RESULT: ${resultStr.substring(0, 200)}${resultStr.length > 200 ? '...' : ''}`
@@ -229,7 +237,7 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
           toolResultBlocks.push({
             type: 'tool_result',
             tool_use_id: block.id,
-            content: resultStr,
+            content: resultBlocks,
           });
         }
 

@@ -1,12 +1,13 @@
 // Module: src/ai/providers/embeddingAdapter.ts
 // Purpose: Universal embedding adapter for Ceobe's RAG memory (Indexer).
 // Caller: src/ai/memory/indexer.ts
-// Dependencies: @google/genai, openai, env
+// Dependencies: @google/genai, openai, env, utils/retry
 // Side Effects: HTTP requests to AI providers
 
 import chalk from 'chalk';
-import * as fs from 'fs';
-import * as path from 'path';
+import { GoogleGenAI } from '@google/genai';
+import { env } from '../../config/env';
+import { withRetry } from '../../utils/retry';
 
 export interface IEmbeddingAdapter {
   readonly name: string;
@@ -25,24 +26,23 @@ class GeminiEmbeddingAdapter implements IEmbeddingAdapter {
     this.modelId = modelId;
   }
 
-  private async getClient(): Promise<any> {
+  private getClient(): any {
     if (!this.client) {
-      const { getGeminiClient } = await import('../geminiClient');
-      this.client = getGeminiClient();
+      const genAI = new (GoogleGenAI as any)({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1' });
+      this.client = (genAI as any).models;
     }
     return this.client;
   }
 
   async getEmbedding(text: string): Promise<number[]> {
-    const { withRetry } = await import('../../utils/retry');
-    const client = await this.getClient();
+    const client = this.getClient();
     const response: any = await withRetry(() =>
-      client.models.embedContent({
+      client.embedContent({
         model: this.modelId,
-        contents: text,
+        content: { parts: [{ text }] },
       })
     );
-    return response.embeddings?.[0]?.values || [];
+    return response.embedding?.values || [];
   }
 }
 

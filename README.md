@@ -1,13 +1,15 @@
 # Ceobe Mastery CLI 🚀
 
-An autonomous AI Engineering orchestrator CLI powered by Gemini 3.1 Pro (Planner) and Claude 4.6 Sonnet (Executor).
+An autonomous AI Engineering orchestrator CLI. Trully Model-Agnostic: supports Gemini, Claude, and any OpenAI-compatible provider (DeepSeek, GLM, Groq, Ollama, etc.).
 
 ## Features
-- **5-Phase Architecture:** Plan -> Design -> Engineering -> Quality -> DevOps.
-- **Polyglot & Microservices Ready:** Native support for Node.js, Go, Rust, Python, PHP/Laravel, and React Native.
-- **Human-in-the-Loop:** Intervene and modify Agent plans before a single line of code is written.
-- **Adaptive Legacy Fallback:** Respects existing codebase architectures (like traditional MVC) instead of forcing rewrites.
-- **Dynamic Skill Routing:** Equipped with 30+ specialized engineering rules (Next.js, Laravel, Bun, Prisma, Python, React Native, Security, etc).
+- **Unified Provider Router:** Switch models (Gemini, Claude, DeepSeek, etc.) via `.env` without changing code.
+- **Interactive Browser Interaction:** Ceobe can now "see" and "act" in a browser (click, type, scroll) to perform automated E2E testing and visual audits.
+- **Structured Pipeline:** 5-Phase autonomous loop (BRD -> Design -> Arch -> Task -> Execute).
+- **Codebase Memory:** RAG-based semantic search for large project context.
+- **Code Correction Loop:** Automatically detects and fixes build/test errors during execution.
+- **Autonomous & Human-in-the-Loop:** Run full projects on autopilot or intervene at every step.
+- **Dynamic Skill Routing:** Equipped with 34+ specialized engineering skills.
 
 ## Installation
 
@@ -16,21 +18,27 @@ npm install -g ceobe-mastery-cli
 ```
 
 ### Environment Variables
-You must configure the following in your system or a local `.env` file to use the CLI:
+Configure your system or a local `.env` file. Ceobe is highly flexible:
+
 ```env
-CLOUDFLARE_ACCOUNT_ID=your_id
-CLOUDFLARE_GATEWAY_ID=your_gateway
-GEMINI_API_KEY=your_gemini_key
-ANTHROPIC_API_KEY=your_claude_key
+# Role Selection (Optional, defaults are Gemini for Planning, Claude for Execution)
+CEOBE_PLANNER_PROVIDER=gemini
+CEOBE_EXECUTOR_PROVIDER=claude
+
+# API Keys (Convention: {PROVIDER_NAME}_API_KEY)
+GEMINI_API_KEY=...
+ANTHROPIC_API_KEY=...
+DEEPSEEK_API_KEY=...
+OPENAI_API_KEY=...
+GLM_API_KEY=...
 ```
 
-## How to Contribute (Open Source)
-Ceobe is designed to be infinitely expandable. You can make it more powerful by adding new Skills or Engineering Rules!
+## How to Contribute
+Ceobe is designed to be infinitely expandable. You can add new Skills or Engineering Rules!
 
 1. Fork this repository.
-2. Clone it locally: `git clone https://github.com/Yoraexe/ceobe.git`
-3. Add a new Markdown skill in the `skills/` folder (e.g. `skills/python-expert/`).
-4. Submit a Pull Request! The community grows stronger when the AI learns new native skills.
+2. Add a new Markdown skill in the `skills/` folder.
+3. Submit a Pull Request!
 
 ## License
 [MIT](LICENSE)

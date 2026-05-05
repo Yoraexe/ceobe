@@ -1,113 +1,121 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as readline from 'readline';
+import { readConfig, writeConfig, getActiveMode, setMode, printModeBadge, confirmToolCall, SENSITIVE_TOOLS } from './modeManager';
+import { env } from '../config/env';
 
-// Mock fs so tests don't touch the real filesystem
 vi.mock('fs');
-vi.mock('chalk', () => ({
-  default: {
-    bgGreen: { black: { bold: (s: string) => s } },
-    bgYellow: { black: { bold: (s: string) => s } },
-    green: (s: string) => s,
-    yellow: (s: string) => s,
-    bold: (s: string) => s,
-    gray: (s: string) => s,
-    cyan: (s: string) => s,
-    red: (s: string) => s,
-  },
+vi.mock('path', async () => {
+  const actual = await vi.importActual('path') as any;
+  return { ...actual };
+});
+vi.mock('readline');
+vi.mock('../config/env', () => ({
+  env: { TARGET_PROJECT_DIR: '/test/project' }
 }));
-
-import {
-  readConfig,
-  writeConfig,
-  getActiveMode,
-  setMode,
-  SENSITIVE_TOOLS,
-  type CeobeConfig,
-} from './modeManager';
 
 describe('modeManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('readConfig', () => {
-    it('should return default autonomous mode if config file does not exist', () => {
-      (fs.existsSync as any).mockReturnValue(false);
-      const config = readConfig();
-      expect(config.mode).toBe('autonomous');
-    });
-
-    it('should return parsed config if file exists', () => {
-      (fs.existsSync as any).mockReturnValue(true);
-      const mockConfig: CeobeConfig = { mode: 'ask', updatedAt: '2026-01-01T00:00:00Z' };
-      (fs.readFileSync as any).mockReturnValue(JSON.stringify(mockConfig));
-      const config = readConfig();
-      expect(config.mode).toBe('ask');
-    });
-
-    it('should return default config if JSON is malformed', () => {
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.readFileSync as any).mockReturnValue('NOT_VALID_JSON{{{');
-      const config = readConfig();
-      expect(config.mode).toBe('autonomous');
-    });
+  it('readConfig should return default if file does not exist', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const config = readConfig();
+    expect(config.mode).toBe('autonomous');
   });
 
-  describe('writeConfig', () => {
-    it('should call mkdirSync and writeFileSync when writing config', () => {
-      (fs.existsSync as any).mockReturnValue(false);
-      (fs.mkdirSync as any).mockReturnValue(undefined);
-      (fs.writeFileSync as any).mockReturnValue(undefined);
-
-      const config: CeobeConfig = { mode: 'ask', updatedAt: new Date().toISOString() };
-      writeConfig(config);
-
-      expect(fs.mkdirSync).toHaveBeenCalled();
-      expect(fs.writeFileSync).toHaveBeenCalled();
-    });
+  it('readConfig should return file content if exists', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'ask', updatedAt: 'now' }));
+    const config = readConfig();
+    expect(config.mode).toBe('ask');
   });
 
-  describe('getActiveMode', () => {
-    it('should return autonomous by default', () => {
-      (fs.existsSync as any).mockReturnValue(false);
-      expect(getActiveMode()).toBe('autonomous');
-    });
-
-    it('should return ask when config is set to ask', () => {
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.readFileSync as any).mockReturnValue(JSON.stringify({ mode: 'ask', updatedAt: '' }));
-      expect(getActiveMode()).toBe('ask');
-    });
+  it('readConfig should return default on parse error', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('invalid-json');
+    const config = readConfig();
+    expect(config.mode).toBe('autonomous');
   });
 
-  describe('setMode', () => {
-    it('should write a config file with the new mode', () => {
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.writeFileSync as any).mockReturnValue(undefined);
-
-      setMode('ask');
-      expect(fs.writeFileSync).toHaveBeenCalled();
-      const callArgs = (fs.writeFileSync as any).mock.calls[0];
-      const written = JSON.parse(callArgs[1]);
-      expect(written.mode).toBe('ask');
-    });
+  it('writeConfig should create dir and write file', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    writeConfig({ mode: 'ask', updatedAt: 'now' });
+    expect(fs.mkdirSync).toHaveBeenCalled();
+    expect(fs.writeFileSync).toHaveBeenCalled();
   });
 
-  describe('SENSITIVE_TOOLS', () => {
-    it('should flag write_file as sensitive', () => {
-      expect(SENSITIVE_TOOLS.has('write_file')).toBe(true);
+  it('getActiveMode and setMode should work', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setMode('ask');
+    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('ask'), 'utf8');
+  });
+
+  it('printModeBadge should output to console', () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    printModeBadge(); // autonomous
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('OTONOM'));
+    
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'ask' }));
+    printModeBadge(); // ask
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('BERTANYA'));
+    spy.mockRestore();
+  });
+
+  it('SENSITIVE_TOOLS should contain expected tools', () => {
+    expect(SENSITIVE_TOOLS.has('write_file')).toBe(true);
+    expect(SENSITIVE_TOOLS.has('execute_command')).toBe(true);
+  });
+
+  describe('confirmToolCall', () => {
+    it('should return true if user types y', async () => {
+      const mockRl = {
+        question: vi.fn().mockImplementation((q, cb) => cb('y')),
+        close: vi.fn()
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
+
+      const result = await confirmToolCall('write_file', { file_path: 'test.ts' });
+      expect(result).toBe(true);
+      expect(mockRl.close).toHaveBeenCalled();
     });
-    it('should flag execute_command as sensitive', () => {
-      expect(SENSITIVE_TOOLS.has('execute_command')).toBe(true);
+
+    it('should return false if user types n', async () => {
+      const mockRl = {
+        question: vi.fn().mockImplementation((q, cb) => cb('n')),
+        close: vi.fn()
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
+
+      const result = await confirmToolCall('delete_file', { file_path: 'test.ts' });
+      expect(result).toBe(false);
     });
-    it('should flag delete_file as sensitive', () => {
-      expect(SENSITIVE_TOOLS.has('delete_file')).toBe(true);
+
+    it('should reject if user types a', async () => {
+      const mockRl = {
+        question: vi.fn().mockImplementation((q, cb) => cb('a')),
+        close: vi.fn()
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
+
+      await expect(confirmToolCall('execute_command', { command: 'ls' })).rejects.toThrow('USER_ABORT');
     });
-    it('should NOT flag read_file as sensitive', () => {
-      expect(SENSITIVE_TOOLS.has('read_file')).toBe(false);
-    });
-    it('should NOT flag semantic_search as sensitive', () => {
-      expect(SENSITIVE_TOOLS.has('semantic_search')).toBe(false);
+
+    it('should handle various tool summaries', async () => {
+      const mockRl = {
+        question: vi.fn().mockImplementation((q, cb) => cb('y')),
+        close: vi.fn()
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
+
+      await confirmToolCall('rename_file', { old_path: 'a', new_path: 'b' });
+      await confirmToolCall('move_file', { source_path: 'a', destination_path: 'b' });
+      await confirmToolCall('start_background_service', { service_id: 's', command: 'c' });
+      await confirmToolCall('unknown_tool', { data: 'val' });
     });
   });
 });

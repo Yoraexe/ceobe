@@ -1,6 +1,6 @@
 // Tujuan: Membaca seluruh file di workspace, memecah kode menjadi chunks, dan membuat embeddings.
 // Caller: src/index.ts (atau perintah CLI `ceobe index`)
-// Dependensi: fs, path, geminiClient, vectorStore, env, ora, chalk
+// Dependensi: fs, path, vectorStore, env, ora, chalk
 // Main Functions: indexWorkspace, getEmbedding
 // Side Effects: Read files, call Google API, write to embeddings.json
 

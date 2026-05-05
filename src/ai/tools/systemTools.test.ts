@@ -73,10 +73,12 @@ describe('systemTools', () => {
     });
 
     it('visual_audit should return multimodal array', async () => {
-      vi.spyOn(browser, 'captureScreenshot').mockResolvedValue({
+      vi.spyOn(browser, 'executeBrowserInteraction').mockResolvedValue({
         base64Data: 'base64',
         mediaType: 'image/png',
-        url: 'http://localhost'
+        url: 'http://localhost',
+        logs: ['log1'],
+        content: 'page content'
       });
       const result = await handleToolCall('visual_audit', { url_or_path: 'http://localhost' });
       expect(Array.isArray(result)).toBe(true);

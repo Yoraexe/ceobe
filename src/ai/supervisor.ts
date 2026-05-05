@@ -16,6 +16,7 @@ import { indexWorkspace } from './memory/indexer';
 import { activeBackgroundProcesses } from './tools/systemTools';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import type { NormalizedContentBlock } from './providers/types';
 
 const execAsync = promisify(exec);
 
@@ -35,7 +36,7 @@ function askUserConfirmation(question: string): Promise<boolean> {
   });
 }
 
-export async function runAutonomousLoop(description: string, askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
+export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
   console.log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
   
   const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
@@ -163,7 +164,7 @@ export async function runAutonomousLoop(description: string, askBeforeExecute: b
           console.log(chalk.yellow(`\n[Supervisor] Code Correction Cycle ${executionRetry}/${MAX_RETRIES}...`));
         }
 
-        console.log(chalk.magenta(`\n[Supervisor] Transitioning to Execution Engine (Claude 4.6 Sonnet)...\n`));
+        console.log(chalk.magenta(`\n[Supervisor] Transitioning to Execution Engine...\n`));
         
         // Append DevOps specs to the task plan so Claude implements them
         let finalTask = `${task}\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\n${devops}`;

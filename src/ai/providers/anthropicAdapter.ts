@@ -5,8 +5,7 @@
 // Side Effects: Makes HTTP requests to Anthropic API (via Cloudflare Gateway)
 
 import Anthropic from '@anthropic-ai/sdk';
-import { env } from '../../config/env';
-import { getGatewayUrl } from '../gateway';
+import { env, getGatewayUrl } from '../../config/env';
 import { withRetry } from '../../utils/retry';
 import type {
   IProviderAdapter,
@@ -30,6 +29,36 @@ export class AnthropicAdapter implements IProviderAdapter {
     });
   }
 
+  async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<string> {
+    const content = typeof prompt === 'string' 
+      ? prompt 
+      : (prompt as any[]).map(block => {
+          if (block.type === 'text') return { type: 'text', text: block.text };
+          if (block.type === 'image' && block.source) {
+            return {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: block.source.media_type,
+                data: block.source.data,
+              }
+            };
+          }
+          return { type: 'text', text: '' };
+        });
+
+    const response = await withRetry(() =>
+      this.client.messages.create({
+        model: this.modelId,
+        max_tokens: 8192,
+        temperature,
+        messages: [{ role: 'user', content }] as any,
+      })
+    );
+    const block = (response as any).content.find((c: any) => c.type === 'text');
+    return ((block as any)?.text || '').trim();
+  }
+
   async chat(
     messages: NormalizedMessage[],
     tools: NormalizedTool[],
@@ -50,7 +79,7 @@ export class AnthropicAdapter implements IProviderAdapter {
       })
     );
 
-    const content: NormalizedContentBlock[] = response.content.map((block) => {
+    const content: NormalizedContentBlock[] = response.content.map((block: any) => {
       if (block.type === 'text') return { type: 'text', text: block.text };
       if (block.type === 'tool_use') {
         return {
