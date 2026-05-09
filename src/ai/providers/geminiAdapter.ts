@@ -18,28 +18,28 @@ import type {
 export class GeminiAdapter implements IProviderAdapter {
   readonly name = 'gemini';
   readonly modelId: string;
-  private client: any;
+  private client: unknown;
 
   constructor(modelId: string = 'gemini-2.0-pro-exp-02-05') {
     this.modelId = modelId;
   }
 
-  private getClient(): any {
+  private getClient(): Record<string, unknown> {
     if (!this.client) {
-      const genAI = new (GoogleGenAI as any)({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1' });
-      this.client = (genAI as any).models;
+      const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1' });
+      this.client = genAI.models;
     }
-    return this.client;
+    return this.client as Record<string, unknown>;
   }
 
   async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<string> {
     const client = this.getClient();
     
-    let parts: any[] = [];
+    let parts: Array<Record<string, unknown>> = [];
     if (typeof prompt === 'string') {
       parts = [{ text: prompt }];
     } else {
-      parts = (prompt as any[]).map(block => {
+      parts = prompt.map((block: NormalizedContentBlock) => {
         if (block.type === 'text') return { text: block.text };
         if (block.type === 'image' && block.source) {
           return {
@@ -54,13 +54,13 @@ export class GeminiAdapter implements IProviderAdapter {
     }
 
     const response = await withRetry(() =>
-      client.generateContent({
+      (client as { generateContent: (args: unknown) => Promise<unknown> }).generateContent({
         model: this.modelId,
         contents: [{ role: 'user', parts }],
         generationConfig: { temperature },
       })
     );
-    return (response as any).text().trim();
+    return (response as { text: () => string }).text().trim();
   }
 
   async chat(

@@ -64,8 +64,9 @@ NO markdown, NO greetings, NO extra text.
     const selected = output.split(',').map(s => s.trim()).filter(s => availableSkills.includes(s));
     spinner.succeed(chalk.green(`${tag} Skills selected: ${selected.join(', ')}`));
     return selected;
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to route skills. Proceeding with base rules only.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to route skills. Proceeding with base rules only. Reason: ${msg}`));
     return [];
   }
 }
@@ -121,8 +122,9 @@ ${readTemplate('brd-template.md')}
     const result = await adapter.generate(prompt, 0.2);
     spinner.succeed(chalk.green(`${tag} BRD generated successfully.`));
     return result;
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to generate BRD.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate BRD. Reason: ${msg}`));
     throw error;
   }
 }
@@ -165,8 +167,9 @@ ${readTemplate('design-template.md')}
     const result = await adapter.generate(prompt, 0.3);
     spinner.succeed(chalk.green(`${tag} Design Spec generated successfully.`));
     return result;
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to generate Design Spec.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate Design Spec. Reason: ${msg}`));
     throw error;
   }
 }
@@ -213,8 +216,9 @@ ${readTemplate('architecture-template.md')}
     const result = await adapter.generate(prompt, 0.2);
     spinner.succeed(chalk.green(`${tag} Architecture Plan generated successfully.`));
     return result;
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to generate Architecture Plan.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate Architecture Plan. Reason: ${msg}`));
     throw error;
   }
 }
@@ -257,8 +261,9 @@ ${readTemplate('tasks-template.md')}
     const result = await adapter.generate(prompt, 0.2);
     spinner.succeed(chalk.green(`${tag} Execution Checklist generated successfully.`));
     return result;
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to generate Checklist.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate Checklist. Reason: ${msg}`));
     throw error;
   }
 }
@@ -305,8 +310,9 @@ ${readTemplate('devops-template.md')}
     const result = await adapter.generate(prompt, 0.2);
     spinner.succeed(chalk.green(`${tag} DevOps Spec generated successfully.`));
     return result;
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to generate DevOps Spec.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate DevOps Spec. Reason: ${msg}`));
     throw error;
   }
 }
@@ -357,8 +363,9 @@ If there are critical conflicts or missing steps, reply with a markdown list of 
       console.log(chalk.cyan('\n-------------------------\n'));
       return { passed: false, feedback: output };
     }
-  } catch (error: any) {
-    spinner.fail(chalk.red(`${tag} Failed to audit the plans.`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to audit the plans. Reason: ${msg}`));
     throw error;
   }
 }

@@ -74,7 +74,7 @@ export function createProviderAdapter(role: 'planner' | 'executor' = 'executor')
   const apiKeyEnvVar = `${provider.toUpperCase()}_API_KEY`;
   const apiKey = process.env[apiKeyEnvVar] || (provider === 'openai' ? process.env.OPENAI_API_KEY : '');
 
-  if (!apiKey) {
+  if (!apiKey && provider !== 'ollama') {
     throw new Error(
       `[Provider Router] API key not found for provider '${provider}' in role '${role}'. ` +
       `Please set ${apiKeyEnvVar} in your environment.`
@@ -82,7 +82,7 @@ export function createProviderAdapter(role: 'planner' | 'executor' = 'executor')
   }
 
   console.log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using ${provider.toUpperCase()} → ${modelId}`));
-  return new OpenAICompatibleAdapter(provider, modelId, apiKey, known.baseURL);
+  return new OpenAICompatibleAdapter(provider, modelId, apiKey || '', known.baseURL);
 }
 
 /** Legacy alias for compatibility */

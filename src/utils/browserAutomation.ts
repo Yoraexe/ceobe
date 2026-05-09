@@ -55,7 +55,10 @@ export async function executeBrowserInteraction(
 
     // Capture console logs
     page.on('console', msg => logs.push(`[${msg.type()}] ${msg.text()}`));
-    page.on('pageerror', (err: any) => logs.push(`[error] ${err.message}`));
+    page.on('pageerror', (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      logs.push(`[error] ${msg}`);
+    });
 
     await page.goto(targetUrl, { waitUntil: 'networkidle0', timeout: 30000 });
 
@@ -83,7 +86,7 @@ export async function executeBrowserInteraction(
             break;
           case 'press':
             if (action.key) {
-              await page.keyboard.press(action.key as any);
+              await page.keyboard.press(action.key as import('puppeteer').KeyInput);
             }
             break;
           case 'scroll':
@@ -92,8 +95,9 @@ export async function executeBrowserInteraction(
         }
         // Small wait after each action for transitions
         await new Promise(r => setTimeout(r, 500));
-      } catch (err: any) {
-        logs.push(`[action-error] Failed ${action.type} on ${action.selector}: ${err.message}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logs.push(`[action-error] Failed ${action.type} on ${action.selector}: ${msg}`);
       }
     }
 

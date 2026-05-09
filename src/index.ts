@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 
 import { env } from './config/env';
-import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, generateDesignSpec, auditPlan } from './ai/planner';
+import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, generateDesignSpec, generateDevOpsConfig, auditPlan } from './ai/planner';
 import { executePlan } from './ai/executor';
 import { runAutonomousLoop } from './ai/supervisor';
 import { indexWorkspace } from './ai/memory/indexer';
@@ -90,13 +90,16 @@ program
       const arch = await generateArchitecture(brd, design, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}architecture.md`), arch);
 
+      const devops = await generateDevOpsConfig(arch, '', selectedSkills);
+      fs.writeFileSync(path.join(ceobeDir, `${prefix}devops.md`), devops);
+
       const plan = await generateImplementationPlan(arch, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}task.md`), plan);
       
       markPhaseComplete(options.feature ? 'build-feature' : 'plan', 'audit');
       
       console.log(chalk.magenta(`\n[Planning Phase Complete] Documents saved to .ceobe/ folder.`));
-      console.log(chalk.yellow(`Please review ${prefix}brd.md, ${prefix}design.md, ${prefix}architecture.md, and ${prefix}task.md.`));
+      console.log(chalk.yellow(`Please review ${prefix}brd.md, ${prefix}design.md, ${prefix}architecture.md, ${prefix}devops.md, and ${prefix}task.md.`));
       console.log(chalk.green(`Once approved, run: npx ceobe audit ${options.feature ? 'feature-' : ''}\n`));
     } catch (err) {
       console.error(chalk.red('\n[Error] Planning failed.'));
@@ -119,7 +122,13 @@ program
         return;
       }
 
-      const planContent = fs.readFileSync(taskPath, 'utf8');
+      let planContent = fs.readFileSync(taskPath, 'utf8');
+      
+      const devopsPath = taskPath.replace('task.md', 'devops.md');
+      if (fs.existsSync(devopsPath)) {
+        planContent += `\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\n${fs.readFileSync(devopsPath, 'utf8')}`;
+      }
+
       console.log(chalk.magenta(`\n[Execution Phase Started]\n`));
       await executePlan(planContent);
       
@@ -143,6 +152,7 @@ program
       const designPath = path.join(ceobeDir, prefix ? `${prefix}design.md` : 'design.md');
       const archPath = path.join(ceobeDir, prefix ? `${prefix}architecture.md` : 'architecture.md');
       const taskPath = path.join(ceobeDir, prefix ? `${prefix}task.md` : 'task.md');
+      const devopsPath = path.join(ceobeDir, prefix ? `${prefix}devops.md` : 'devops.md');
 
       if (!fs.existsSync(brdPath) || !fs.existsSync(archPath) || !fs.existsSync(taskPath)) {
         console.error(chalk.red(`\n[Error] Missing plan files in ${ceobeDir}. Expected brd, architecture, and task files.`));
@@ -156,6 +166,8 @@ ${fs.readFileSync(brdPath, 'utf8')}
 ${fs.existsSync(designPath) ? fs.readFileSync(designPath, 'utf8') : ''}
 --- ARCHITECTURE ---
 ${fs.readFileSync(archPath, 'utf8')}
+--- DEVOPS ---
+${fs.existsSync(devopsPath) ? fs.readFileSync(devopsPath, 'utf8') : ''}
 --- TASK PLAN ---
 ${fs.readFileSync(taskPath, 'utf8')}
       `;

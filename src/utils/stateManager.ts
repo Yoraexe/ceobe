@@ -66,17 +66,19 @@ export function writeState(state: Partial<CeobeState>): void {
     retries--;
   }
   
-  // Read state BEFORE writing the lock to prevent deadlock with readState
-  const currentState = readState() || {
-    currentPhase: 'plan',
-    completedPhases: [],
-    completedFiles: [],
-    lastUpdated: new Date().toISOString()
-  };
-
   fs.writeFileSync(lockPath, 'locked');
 
   try {
+    let currentState: CeobeState;
+    if (fs.existsSync(statePath)) {
+       try {
+         currentState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+       } catch (err) {
+         currentState = { currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() };
+       }
+    } else {
+       currentState = { currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() };
+    }
     const newState: CeobeState = {
       ...currentState,
       ...state,

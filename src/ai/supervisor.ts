@@ -223,7 +223,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
              try {
                 console.log(chalk.gray(`Running: composer validate`));
                 await execAsync('composer validate --no-check-all', { cwd: env.TARGET_PROJECT_DIR });
-             } catch (compErr: any) {
+             } catch (error: unknown) {
                 // Ignore if composer not installed globally
              }
              
@@ -231,9 +231,10 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
                 console.log(chalk.gray(`Running: php artisan about`));
                 try {
                    await execAsync('php artisan about', { cwd: env.TARGET_PROJECT_DIR });
-                } catch (artisanErr: any) {
-                   if (!artisanErr.message.includes('not recognized') && !artisanErr.message.includes('not found')) {
-                      throw artisanErr;
+                } catch (error: unknown) {
+                   const msg = error instanceof Error ? error.message : String(error);
+                   if (!msg.includes('not recognized') && !msg.includes('not found')) {
+                      throw error;
                    }
                 }
              }
@@ -247,9 +248,11 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
              try {
                 console.log(chalk.gray(`Running: pytest (if available)`));
                 await execAsync('pytest', { cwd: env.TARGET_PROJECT_DIR });
-             } catch (pytestErr: any) {
+             } catch (pytestErr: unknown) {
                 // Only fail if pytest actually ran and tests failed. If command not found, ignore.
-                if (pytestErr.stdout && !pytestErr.message.includes('not recognized') && !pytestErr.message.includes('not found')) {
+                const err = pytestErr as any;
+                const msg = err instanceof Error ? err.message : String(err);
+                if (err.stdout && !msg.includes('not recognized') && !msg.includes('not found')) {
                    throw pytestErr;
                 }
              }
@@ -258,9 +261,10 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
           isCodeValid = true;
           console.log(chalk.green(`\n✅ [Supervisor] Code Verification Passed! No compilation or test errors.`));
           markPhaseComplete('verify', 'devops');
-        } catch (verifyError: any) {
+        } catch (verifyError: unknown) {
           console.log(chalk.red(`\n❌ [Supervisor] Verification Failed.`));
-          execFeedback = `Verification failed with output:\n${verifyError.stdout}\n${verifyError.stderr}`;
+          const err = verifyError as any;
+          execFeedback = `Verification failed with output:\n${err.stdout || ''}\n${err.stderr || ''}`;
           console.log(chalk.yellow(execFeedback));
           executionRetry++;
         }
@@ -276,7 +280,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
     markPhaseComplete('devops', 'done');
     console.log(chalk.green.bold(`\n🎉 [Supervisor Agent] Autonomous Workflow Complete! Mission Accomplished.\n`));
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(chalk.red('\n[Supervisor Error] Autonomous loop crashed.'));
     console.error(err);
   } finally {

@@ -52,11 +52,11 @@ export class AnthropicAdapter implements IProviderAdapter {
         model: this.modelId,
         max_tokens: 8192,
         temperature,
-        messages: [{ role: 'user', content }] as any,
+        messages: [{ role: 'user', content }] as Anthropic.MessageParam[],
       })
     );
-    const block = (response as any).content.find((c: any) => c.type === 'text');
-    return ((block as any)?.text || '').trim();
+    const block = response.content.find(c => c.type === 'text') as Anthropic.TextBlock | undefined;
+    return (block?.text || '').trim();
   }
 
   async chat(
@@ -75,11 +75,11 @@ export class AnthropicAdapter implements IProviderAdapter {
           name: t.name,
           description: t.description,
           input_schema: t.input_schema,
-        })) as any,
+        })) as Anthropic.Tool[],
       })
     );
 
-    const content: NormalizedContentBlock[] = response.content.map((block: any) => {
+    const content: NormalizedContentBlock[] = response.content.map((block) => {
       if (block.type === 'text') return { type: 'text', text: block.text };
       if (block.type === 'tool_use') {
         return {

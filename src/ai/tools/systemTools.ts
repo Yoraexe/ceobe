@@ -41,7 +41,8 @@ function wrapInSandbox(cmd: string): string {
 }
 
 function isCommandAllowed(cmd: string): boolean {
-  const allowedPrefixes = ['npm ', 'npx ', 'tsc', 'git ', 'vitest', 'node ', 'dir', 'ls', 'bun ', 'go ', 'cargo ', 'docker ', 'python ', 'pip ', 'pnpm ', 'yarn ', 'pytest'];
+  if (cmd.includes('`') || cmd.includes('$(')) return false; // Block command substitution
+  const allowedPrefixes = ['npm ', 'npx ', 'tsc', 'git ', 'vitest', 'node ', 'dir', 'ls', 'bun ', 'go ', 'cargo ', 'docker ', 'python ', 'pip ', 'pnpm ', 'yarn ', 'pytest', 'flutter ', 'dart ', 'php ', 'composer ', 'artisan '];
   const segments = cmd.split(/(?:&&|\|\||;|\|)/).map(s => s.trim()).filter(s => s.length > 0);
   
   for (const segment of segments) {
@@ -316,6 +317,7 @@ function recursiveSearch(dir: string, pattern: RegExp, results: string[] = []): 
     if (stat.isDirectory()) {
       recursiveSearch(fullPath, pattern, results);
     } else if (stat.isFile()) {
+      if (stat.size > 1000000) continue; // Skip files > 1MB
       try {
         const content = fs.readFileSync(fullPath, 'utf8');
         const lines = content.split('\n');
@@ -332,13 +334,18 @@ function recursiveSearch(dir: string, pattern: RegExp, results: string[] = []): 
   return results;
 }
 
-export async function handleToolCall(toolName: string, input: any): Promise<any> {
+export async function handleToolCall(toolName: string, rawInput: Record<string, unknown>): Promise<unknown> {
+  const input = rawInput as Record<string, any>;
   try {
     switch (toolName) {
       case 'read_file': {
         const fullPath = validatePath(input.file_path);
         if (!fs.existsSync(fullPath)) {
           return `Error: File not found at ${fullPath}`;
+        }
+        const stats = fs.statSync(fullPath);
+        if (stats.size > 100000) { // ~100KB limit
+          return `Error: File is too large to read entirely (${stats.size} bytes). This would exceed your context window. Please use search_in_files or semantic_search to find what you need.`;
         }
         return fs.readFileSync(fullPath, 'utf8');
       }
@@ -366,12 +373,17 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
             cwd: env.TARGET_PROJECT_DIR,
             timeout: 120000 // 120s timeout (Docker may need longer)
           });
+          const truncate = (s: string) => s.length > 5000 ? s.substring(s.length - 5000) + '\n...[TRUNCATED]' : s;
           let result = '';
-          if (stdout) result += `STDOUT:\n${stdout}\n`;
-          if (stderr) result += `STDERR:\n${stderr}\n`;
+          if (stdout) result += `STDOUT:\n${truncate(stdout)}\n`;
+          if (stderr) result += `STDERR:\n${truncate(stderr)}\n`;
           return result || 'Command executed successfully with no output.';
-        } catch (execErr: any) {
-          return `Command failed:\n${execErr.message}\nSTDOUT:\n${execErr.stdout || ''}\nSTDERR:\n${execErr.stderr || ''}`;
+        } catch (execErr: unknown) {
+          const truncate = (s: string) => s.length > 5000 ? s.substring(s.length - 5000) + '\n...[TRUNCATED]' : s;
+          const msg = execErr instanceof Error ? execErr.message : String(execErr);
+          const out = (execErr as { stdout?: string }).stdout || '';
+          const err = (execErr as { stderr?: string }).stderr || '';
+          return `Command failed:\n${msg}\nSTDOUT:\n${truncate(out)}\nSTDERR:\n${truncate(err)}`;
         }
       }
 
@@ -424,11 +436,31 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
         }
         
         let content = fs.readFileSync(fullPath, 'utf8');
-        if (!content.includes(input.target_content)) {
-          return `Error: target_content not found in the file. Make sure you matched whitespaces and formatting exactly.`;
+        const target = String(input.target_content);
+        const replacement = String(input.replacement_content);
+        
+        if (!content.includes(target)) {
+          // Fallback: try whitespace-insensitive regex match
+          try {
+            const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regexTarget = escapedTarget.replace(/\s+/g, '\\s+');
+            const regex = new RegExp(regexTarget);
+            const match = content.match(regex);
+            
+            if (match && match.index !== undefined) {
+              content = content.substring(0, match.index) + replacement + content.substring(match.index + match[0].length);
+              fs.writeFileSync(fullPath, content, 'utf8');
+              markFileComplete(input.file_path);
+              return `Successfully edited ${fullPath} (using whitespace-normalized fallback)`;
+            }
+          } catch(e) {
+            // Regex compilation or match failed, fallback to strict error below
+          }
+          
+          return `Error: target_content not found in the file. Exact match and whitespace fallback failed.\nEnsure that the text you provided matches the file content.\nHint: use read_file to check the exact lines you want to replace.`;
         }
         
-        content = content.replaceAll(input.target_content, input.replacement_content);
+        content = content.replaceAll(target, replacement);
         fs.writeFileSync(fullPath, content, 'utf8');
         markFileComplete(input.file_path);
         return `Successfully edited ${fullPath}`;
@@ -499,8 +531,8 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
              return results.slice(0, 100).join('\n') + `\n... and ${results.length - 100} more matches.`;
           }
           return results.join('\n');
-        } catch (e: any) {
-          return `Error during search: ${e.message}`;
+        } catch (e: unknown) {
+          return `Error during search: ${e instanceof Error ? e.message : String(e)}`;
         }
       }
 
@@ -522,8 +554,8 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
           if (results.length === 0) return 'No relevant code found in memory. Please ensure the workspace has been indexed.';
           
           return results.map(r => `--- File: ${r.chunk.filePath} (Relevance Score: ${r.score.toFixed(3)}) ---\n${r.chunk.content}`).join('\n\n');
-        } catch (e: any) {
-          return `Error during semantic search: ${e.message}`;
+        } catch (e: unknown) {
+          return `Error during semantic search: ${e instanceof Error ? e.message : String(e)}`;
         }
       }
 
@@ -556,15 +588,15 @@ export async function handleToolCall(toolName: string, input: any): Promise<any>
               }
             }
           ];
-        } catch (e: any) {
-          return `Error during visual audit: ${e.message}`;
+        } catch (e: unknown) {
+          return `Error during visual audit: ${e instanceof Error ? e.message : String(e)}`;
         }
       }
 
       default:
         return `Error: Tool ${toolName} not recognized.`;
     }
-  } catch (error: any) {
-    return `Error executing ${toolName}: ${error.message}`;
+  } catch (error: unknown) {
+    return `Error executing ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
   }
 }

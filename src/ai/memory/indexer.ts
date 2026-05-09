@@ -69,9 +69,13 @@ function getAllFiles(dir: string, fileList: string[] = []): string[] {
   return fileList;
 }
 
+let cachedEmbeddingAdapter: ReturnType<typeof createEmbeddingAdapter> | null = null;
+
 export async function getEmbedding(text: string): Promise<number[]> {
-  const adapter = createEmbeddingAdapter();
-  return adapter.getEmbedding(text);
+  if (!cachedEmbeddingAdapter) {
+    cachedEmbeddingAdapter = createEmbeddingAdapter();
+  }
+  return cachedEmbeddingAdapter.getEmbedding(text);
 }
 
 export async function indexWorkspace(): Promise<void> {
@@ -117,6 +121,9 @@ export async function indexWorkspace(): Promise<void> {
     
     for (const file of filesToProcess) {
       try {
+        const stats = fs.statSync(file);
+        if (stats.size > 1000000) continue; // Skip files > 1MB
+
         const content = fs.readFileSync(file, 'utf8');
         const lines = content.split('\n');
         
@@ -176,8 +183,9 @@ export async function indexWorkspace(): Promise<void> {
     saveCache(newCache);
     spinner.succeed(chalk.green(`Successfully indexed ${chunks.length} new/modified chunks. Total chunks in memory: ${finalChunks.length}.`));
     
-  } catch (error: any) {
-    spinner.fail(chalk.red(`Indexing failed: ${error.message}`));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`Indexing failed: ${msg}`));
     throw error;
   }
 }

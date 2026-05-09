@@ -20,28 +20,28 @@ export interface IEmbeddingAdapter {
 class GeminiEmbeddingAdapter implements IEmbeddingAdapter {
   readonly name = 'gemini';
   readonly modelId: string;
-  private client: any;
+  private client: unknown;
 
   constructor(modelId: string = 'text-embedding-004') {
     this.modelId = modelId;
   }
 
-  private getClient(): any {
+  private getClient(): unknown {
     if (!this.client) {
-      const genAI = new (GoogleGenAI as any)({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1' });
-      this.client = (genAI as any).models;
+      const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1' });
+      this.client = genAI.models;
     }
     return this.client;
   }
 
   async getEmbedding(text: string): Promise<number[]> {
-    const client = this.getClient();
-    const response: any = await withRetry(() =>
+    const client = this.getClient() as { embedContent: (params: unknown) => Promise<unknown> };
+    const response = await withRetry(() =>
       client.embedContent({
         model: this.modelId,
         content: { parts: [{ text }] },
       })
-    );
+    ) as { embedding?: { values?: number[] } };
     return response.embedding?.values || [];
   }
 }
@@ -51,7 +51,7 @@ class GeminiEmbeddingAdapter implements IEmbeddingAdapter {
 class OpenAICompatibleEmbeddingAdapter implements IEmbeddingAdapter {
   readonly name: string;
   readonly modelId: string;
-  private client: any;
+  private client: unknown;
   private _apiKey: string;
   private _baseURL: string;
 
@@ -62,7 +62,7 @@ class OpenAICompatibleEmbeddingAdapter implements IEmbeddingAdapter {
     this._baseURL = baseURL;
   }
 
-  private async getClient(): Promise<any> {
+  private async getClient(): Promise<unknown> {
     if (!this.client) {
       const OpenAI = (await import('openai')).default;
       this.client = new OpenAI({ apiKey: this._apiKey, baseURL: this._baseURL });
@@ -72,8 +72,8 @@ class OpenAICompatibleEmbeddingAdapter implements IEmbeddingAdapter {
 
   async getEmbedding(text: string): Promise<number[]> {
     const { withRetry } = await import('../../utils/retry');
-    const client = await this.getClient();
-    const response: any = await withRetry(() =>
+    const client = await this.getClient() as import('openai').default;
+    const response = await withRetry(() =>
       client.embeddings.create({
         model: this.modelId,
         input: text,

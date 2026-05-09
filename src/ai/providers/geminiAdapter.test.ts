@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GeminiAdapter } from './geminiAdapter';
 
 vi.mock('@google/genai', () => ({
-  GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-    getGenerativeModel: vi.fn().mockReturnValue({
+  GoogleGenAI: vi.fn().mockImplementation(() => ({
+    models: {
       generateContent: vi.fn().mockResolvedValue({
-        response: { text: () => 'mock gemini response' }
+        text: () => 'mock gemini response'
       })
-    })
+    }
   }))
 }));
 vi.mock('../../config/env', () => ({

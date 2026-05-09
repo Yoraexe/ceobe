@@ -35,6 +35,7 @@ describe('systemTools', () => {
 
     it('read_file should read valid file', async () => {
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'statSync').mockReturnValue({ size: 100 } as any);
       vi.spyOn(fs, 'readFileSync').mockReturnValue('file content');
       
       const validPath = path.resolve('./mock-workspace/valid.txt');
@@ -80,7 +81,7 @@ describe('systemTools', () => {
         logs: ['log1'],
         content: 'page content'
       });
-      const result = await handleToolCall('visual_audit', { url_or_path: 'http://localhost' });
+      const result = await handleToolCall('visual_audit', { url_or_path: 'http://localhost' }) as any[];
       expect(Array.isArray(result)).toBe(true);
       expect(result[0].type).toBe('text');
       expect(result[1].type).toBe('image');

@@ -98,8 +98,15 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
     ];
 
     let isThinking = true;
+    let iterationCount = 0;
+    const MAX_ITERATIONS = 50; // Guard against infinite failure loops
 
     while (isThinking) {
+      iterationCount++;
+      if (iterationCount > MAX_ITERATIONS) {
+        throw new Error(`Max iterations (${MAX_ITERATIONS}) reached. Agent is stuck in an infinite loop. Execution aborted.`);
+      }
+
       messages = trimMessages(messages, 25);
 
       const response = await adapter.chat(messages, tools, systemInstruction);
@@ -164,9 +171,10 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
             let approved = false;
             try {
               approved = await confirmToolCall(block.name, (block.input ?? {}) as Record<string, unknown>);
-            } catch (abortErr: any) {
+            } catch (abortErr: unknown) {
               // User typed 'a' / 'abort' — stop the entire session
-              console.log(chalk.red(`\n[Mode: Bertanya] ${abortErr.message}`));
+              const msg = abortErr instanceof Error ? abortErr.message : String(abortErr);
+              console.log(chalk.red(`\n[Mode: Bertanya] ${msg}`));
               logExecution(`USER_ABORT: Session terminated by user during ${block.name}`);
               return;
             }
@@ -246,14 +254,15 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
     }
 
     logExecution('--- FINISHED EXECUTION ---\n');
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
     spinner.fail(
-      chalk.red(`[${adapter.name.toUpperCase()}] Execution failed: ${error.message}`)
+      chalk.red(`[${adapter.name.toUpperCase()}] Execution failed: ${msg}`)
     );
     const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
     fs.appendFileSync(
       logPath,
-      `[${new Date().toISOString()}] ERROR: ${error.message}\n`,
+      `[${new Date().toISOString()}] ERROR: ${msg}\n`,
       'utf8'
     );
     throw error;
