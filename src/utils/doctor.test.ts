@@ -24,6 +24,7 @@ describe('doctor', () => {
 
   it('should run diagnostics successfully with existing keys and workspace', async () => {
     vi.spyOn(keyManager, 'readAllKeys').mockReturnValue({ GEMINI_API_KEY: 'test' });
+    vi.spyOn(keyManager, 'getRequiredKeyForActiveProviders').mockReturnValue(['GEMINI_API_KEY']);
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     vi.spyOn(fs, 'statSync').mockReturnValue({ size: 2048 } as any);
     
@@ -36,6 +37,7 @@ describe('doctor', () => {
 
   it('should handle uninitialized workspace and missing keys', async () => {
     vi.spyOn(keyManager, 'readAllKeys').mockReturnValue({});
+    vi.spyOn(keyManager, 'getRequiredKeyForActiveProviders').mockReturnValue(['GEMINI_API_KEY', 'ANTHROPIC_API_KEY']);
     vi.spyOn(fs, 'existsSync').mockReturnValue(false);
     env.CLOUDFLARE_ACCOUNT_ID = '';
     

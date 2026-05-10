@@ -4,385 +4,626 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 
 import { env } from './config/env';
-import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, generateDesignSpec, generateDevOpsConfig, auditPlan } from './ai/planner';
+import {
+  selectRelevantSkills, generateBRD, generateArchitecture,
+  generateImplementationPlan, generateDesignSpec,
+  generateDevOpsConfig, auditPlan
+} from './ai/planner';
 import { executePlan } from './ai/executor';
 import { runAutonomousLoop } from './ai/supervisor';
 import { indexWorkspace } from './ai/memory/indexer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { markPhaseComplete } from './utils/stateManager';
-import { setMode, getActiveMode, printModeBadge, type CeobeMode } from './utils/modeManager';
+import { setMode, printModeBadge, type CeobeMode } from './utils/modeManager';
 import {
-  setKey, removeKey, findKeyDef, printKeyTable,
-  runSetupWizard, KEY_DEFINITIONS,
+  setKey, removeKey, findKeyDef, printKeyTable, maskKey,
+  runSetupWizard, KEY_DEFINITIONS, readAllKeys,
 } from './utils/keyManager';
 import { runDoctor } from './utils/doctor';
+import {
+  printBanner, printSection, printStep, ok, warn, info, hint,
+  printNextStep, printError, printHelp
+} from './ui/banner';
 
+const VERSION = '1.4.0';
 const program = new Command();
 
+// ── Suppress default help in favour of our custom one ─────────────────────────
 program
   .name('ceobe')
-  .description('Ceobe CLI: An AI Engineering orchestrator. Polyglot, multi-provider, with Autonomous & Ask modes.')
-  .version('1.3.0');
+  .description('Ceobe — Autonomous AI Engineering Orchestrator')
+  .version(VERSION, '-v, --version', 'Show Ceobe version')
+  .helpOption(false) // We render our own
+  .addHelpCommand(false);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper: resolve file input (text or image) for plan/auto commands
+// ─────────────────────────────────────────────────────────────────────────────
+function resolveFileInput(filePath: string, description?: string): string | object[] {
+  const abs = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+  if (!fs.existsSync(abs)) {
+    printError('File tidak ditemukan', abs, `Periksa path file Anda`);
+    process.exit(1);
+  }
+  const ext = path.extname(abs).toLowerCase();
+  if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+    info(`Membaca UI Mockup dari: ${chalk.white(abs)}`);
+    const base64Data = fs.readFileSync(abs).toString('base64');
+    const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    return [
+      { type: 'text', text: `UI mockup attached. Analyze and use as project requirements. Extra context: ${description || ''}` },
+      { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } }
+    ];
+  }
+  info(`Membaca PRD dari file: ${chalk.white(abs)}`);
+  return fs.readFileSync(abs, 'utf8');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe auto — Full autonomous pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('auto [description]')
+  .description('🤖  Jalankan pipeline penuh secara otonom: plan → audit → execute')
+  .option('--ask', 'Minta konfirmasi sebelum eksekusi (human-in-the-loop)')
+  .option('--feature', 'Mode tambah fitur baru ke proyek yang sudah ada')
+  .option('--file <path>', 'Gunakan file PRD atau mockup UI sebagai sumber requirement')
+  .addHelpText('after', `
+  Contoh:
+    ceobe auto "Build a REST API with Go and PostgreSQL"
+    ceobe auto --file requirements.md
+    ceobe auto --file mockup.png "tambahkan dark mode"
+    ceobe auto --feature "tambahkan fitur payment gateway"
+    ceobe auto --ask "Build a Flutter app"   ← pause sebelum eksekusi
+`)
+  .action(async (description: string | undefined, options: { ask: boolean; feature: boolean; file?: string }) => {
+    printBanner();
+
+    let finalDescription: string | object[] = description || '';
+    if (options.file) {
+      finalDescription = resolveFileInput(options.file, description);
+    }
+    if (!finalDescription || (Array.isArray(finalDescription) && finalDescription.length === 0)) {
+      printError(
+        'Deskripsi proyek diperlukan',
+        'Kamu belum memberikan deskripsi atau file requirement.',
+        'ceobe auto "Deskripsi proyekmu" atau ceobe auto --file requirement.md'
+      );
+      process.exit(1);
+    }
+
+    await runAutonomousLoop(finalDescription as any, options.ask, options.feature);
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe plan — Generate planning documents
+// ─────────────────────────────────────────────────────────────────────────────
 program
   .command('plan [description]')
-  .description('Phase 1: Generate BRD, Architecture, and Task Plan. Use --feature for incremental builds.')
-  .option('--feature', 'Plan as a new feature instead of a new project', false)
-  .option('--file <path>', 'Use an external PRD/BRD file as the source')
-  .action(async (description: string | undefined, options: { feature: boolean, file?: string }) => {
+  .description('📋  Buat BRD, Desain, Arsitektur & Task Plan (untuk review manual)')
+  .option('--feature', 'Rencanakan fitur baru alih-alih proyek baru')
+  .option('--file <path>', 'Gunakan file PRD atau mockup UI sebagai sumber requirement')
+  .addHelpText('after', `
+  Contoh:
+    ceobe plan "Landing page dengan autentikasi"
+    ceobe plan --file prd.md
+    ceobe plan --feature "tambahkan export PDF"
+`)
+  .action(async (description: string | undefined, options: { feature: boolean; file?: string }) => {
+    printBanner();
     printModeBadge();
+
     const prefix = options.feature ? 'feature-' : '';
-    
-    let finalDescription: string | any[] = description || '';
+    let finalDescription: string | object[] = description || '';
     if (options.file) {
-      const filePath = path.isAbsolute(options.file) ? options.file : path.join(process.cwd(), options.file);
-      if (!fs.existsSync(filePath)) {
-        console.error(chalk.red(`\n[Error] File tidak ditemukan: ${filePath}`));
-        return;
-      }
-      
-      const ext = path.extname(filePath).toLowerCase();
-      const isImage = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
-      
-      if (isImage) {
-        console.log(chalk.blue(`Reading UI Mockup from image: ${filePath}`));
-        const base64Data = fs.readFileSync(filePath).toString('base64');
-        const mimeType = ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
-        
-        finalDescription = [
-          { type: 'text', text: `Attached is a UI mockup/screenshot for the project requirements. Analyze this visual input along with any description provided: ${description || ''}` },
-          { 
-            type: 'image', 
-            source: { 
-              type: 'base64', 
-              media_type: mimeType, 
-              data: base64Data 
-            } 
-          }
-        ];
-      } else {
-        console.log(chalk.blue(`Reading PRD from file: ${filePath}`));
-        finalDescription = fs.readFileSync(filePath, 'utf8');
-      }
+      finalDescription = resolveFileInput(options.file, description);
     }
 
     if (!finalDescription || (Array.isArray(finalDescription) && finalDescription.length === 0)) {
-      console.error(chalk.red('\n[Error] Silakan masukkan deskripsi atau gunakan opsi --file <path>.'));
-      return;
+      printError(
+        'Deskripsi proyek diperlukan',
+        undefined,
+        'ceobe plan "Deskripsi proyekmu" atau ceobe plan --file prd.md'
+      );
+      process.exit(1);
     }
 
-    console.log(chalk.magenta.bold(`\n🚀 [Ceobe Planner] Planning ${options.feature ? 'Feature' : 'New Project'}\n`));
-    console.log(chalk.gray(`Workspace: ${process.cwd()}\n`));
+    const TOTAL_STEPS = 5;
+    printSection(options.feature ? '✨ Merencanakan Fitur Baru' : '🚀 Merencanakan Proyek Baru');
+    info(`Workspace: ${chalk.white(process.cwd())}`);
 
     try {
       const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
       if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
-      const selectedSkills = await selectRelevantSkills(finalDescription);
+      printStep(1, TOTAL_STEPS, 'Memilih skill yang relevan...');
+      const selectedSkills = await selectRelevantSkills(finalDescription as any);
+      ok(`Skill dipilih: ${chalk.cyan(selectedSkills.join(', ') || 'general')}`);
 
-      const brd = await generateBRD(finalDescription, selectedSkills);
+      printStep(2, TOTAL_STEPS, 'Membuat Business Requirements Document...');
+      const brd = await generateBRD(finalDescription as any, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}brd.md`), brd);
+      ok(`BRD tersimpan → ${chalk.cyan(`.ceobe/${prefix}brd.md`)}`);
 
+      printStep(3, TOTAL_STEPS, 'Membuat Design Specification...');
       const design = await generateDesignSpec(brd, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}design.md`), design);
+      ok(`Design tersimpan → ${chalk.cyan(`.ceobe/${prefix}design.md`)}`);
 
+      printStep(4, TOTAL_STEPS, 'Membuat Architecture & DevOps Config...');
       const arch = await generateArchitecture(brd, design, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}architecture.md`), arch);
-
       const devops = await generateDevOpsConfig(arch, '', selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}devops.md`), devops);
+      ok(`Architecture & DevOps tersimpan → ${chalk.cyan(`.ceobe/${prefix}architecture.md`)}`);
 
+      printStep(5, TOTAL_STEPS, 'Membuat Implementation Task Plan...');
       const plan = await generateImplementationPlan(arch, selectedSkills);
       fs.writeFileSync(path.join(ceobeDir, `${prefix}task.md`), plan);
-      
+      ok(`Task Plan tersimpan → ${chalk.cyan(`.ceobe/${prefix}task.md`)}`);
+
       markPhaseComplete(options.feature ? 'build-feature' : 'plan', 'audit');
-      
-      console.log(chalk.magenta(`\n[Planning Phase Complete] Documents saved to .ceobe/ folder.`));
-      console.log(chalk.yellow(`Please review ${prefix}brd.md, ${prefix}design.md, ${prefix}architecture.md, ${prefix}devops.md, and ${prefix}task.md.`));
-      console.log(chalk.green(`Once approved, run: npx ceobe audit ${options.feature ? 'feature-' : ''}\n`));
-    } catch (err) {
-      console.error(chalk.red('\n[Error] Planning failed.'));
-      console.error(err);
+
+      printSection('✅ Planning Selesai!');
+      console.log(chalk.dim(`  Semua dokumen tersimpan di folder ${chalk.white('.ceobe/')}`));
+      console.log(chalk.dim(`  Review dan edit file-file berikut sesuai kebutuhan:`));
+      console.log(chalk.dim(`  ${['brd.md', 'design.md', 'architecture.md', 'devops.md', 'task.md'].map(f => chalk.cyan(prefix + f)).join('  ·  ')}`));
+      printNextStep('Setelah review, jalankan audit untuk verifikasi plan:', `ceobe audit ${prefix ? '-- ' + prefix : ''}`);
+
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      printError('Planning gagal', msg);
+      process.exit(1);
     }
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe audit — QA audit plan
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('audit [prefix]')
+  .description('🔍  Audit plan untuk memastikan konsistensi sebelum eksekusi')
+  .addHelpText('after', `
+  Contoh:
+    ceobe audit              ← audit project baru
+    ceobe audit feature-     ← audit plan fitur
+`)
+  .action(async (prefix: string = '') => {
+    printBanner();
+    printModeBadge();
+    printSection('🔍 Mengaudit Plan...');
+
+    try {
+      const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+      const get = (name: string) => path.join(ceobeDir, prefix ? `${prefix}${name}` : name);
+
+      const brdPath = get('brd.md'), archPath = get('architecture.md');
+      const taskPath = get('task.md'), designPath = get('design.md'), devopsPath = get('devops.md');
+
+      if (!fs.existsSync(brdPath) || !fs.existsSync(archPath) || !fs.existsSync(taskPath)) {
+        printError(
+          'File plan tidak ditemukan di .ceobe/',
+          `Pastikan kamu sudah menjalankan 'ceobe plan' terlebih dahulu.`,
+          'ceobe plan "Deskripsi proyekmu"'
+        );
+        return;
+      }
+
+      info(`Membaca dokumen dari: ${chalk.cyan('.ceobe/')}`);
+
+      const combinedContent = [
+        `--- BRD ---\n${fs.readFileSync(brdPath, 'utf8')}`,
+        `--- DESIGN ---\n${fs.existsSync(designPath) ? fs.readFileSync(designPath, 'utf8') : ''}`,
+        `--- ARCHITECTURE ---\n${fs.readFileSync(archPath, 'utf8')}`,
+        `--- DEVOPS ---\n${fs.existsSync(devopsPath) ? fs.readFileSync(devopsPath, 'utf8') : ''}`,
+        `--- TASK PLAN ---\n${fs.readFileSync(taskPath, 'utf8')}`,
+      ].join('\n\n');
+
+      const briefDescription = fs.readFileSync(brdPath, 'utf8').substring(0, 500);
+      const selectedSkills = await selectRelevantSkills(briefDescription);
+      const result = await auditPlan(combinedContent, selectedSkills);
+
+      if (result.passed) {
+        markPhaseComplete('audit', 'execute');
+        printSection('✅ Audit Lulus!');
+        ok('Semua plan sudah konsisten dan siap dieksekusi.');
+        printNextStep('Jalankan executor untuk memulai pembangunan:', `ceobe execute ${prefix ? prefix + 'task.md' : ''}`);
+      } else {
+        printSection('⚠️  Audit Menemukan Masalah');
+        warn('Perbaiki masalah di atas pada file markdown Anda, lalu jalankan audit lagi.');
+        hint('ceobe audit');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      printError('Audit gagal', msg);
+    }
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe execute — Execute task plan
+// ─────────────────────────────────────────────────────────────────────────────
 program
   .command('execute [taskFile]')
-  .description('Phase 2: Execute a generated task plan (default: task.md).')
+  .description('⚡  Eksekusi task plan yang sudah diaudit')
+  .addHelpText('after', `
+  Contoh:
+    ceobe execute                  ← eksekusi task.md (default)
+    ceobe execute feature-task.md  ← eksekusi plan fitur
+`)
   .action(async (taskFile: string = 'task.md') => {
+    printBanner();
     printModeBadge();
-    console.log(chalk.blue(`Executing plan from: .ceobe/${taskFile}`));
-    
+    printSection('⚡ Memulai Eksekusi Plan...');
+
     try {
       const taskPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', taskFile);
       if (!fs.existsSync(taskPath)) {
-        console.error(chalk.red(`\n[Error] Task file not found at ${taskPath}`));
-        console.error(chalk.yellow(`Did you forget to run 'ceobe plan' first?\n`));
+        printError(
+          `File task tidak ditemukan: .ceobe/${taskFile}`,
+          `Pastikan kamu sudah menjalankan 'ceobe plan' dan 'ceobe audit' terlebih dahulu.`,
+          'ceobe plan "Deskripsi proyekmu"'
+        );
         return;
       }
 
+      info(`Membaca task dari: ${chalk.cyan(`.ceobe/${taskFile}`)}`);
       let planContent = fs.readFileSync(taskPath, 'utf8');
-      
       const devopsPath = taskPath.replace('task.md', 'devops.md');
       if (fs.existsSync(devopsPath)) {
         planContent += `\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\n${fs.readFileSync(devopsPath, 'utf8')}`;
+        info('DevOps config ditemukan dan disertakan.');
       }
 
-      console.log(chalk.magenta(`\n[Execution Phase Started]\n`));
       await executePlan(planContent);
-      
       markPhaseComplete('execute', 'done');
-    } catch (err) {
-      console.error(chalk.red('\n[Error] Execution failed.'));
-      console.error(err);
+
+      printSection('🎉 Eksekusi Selesai!');
+      ok('Proyek berhasil dibangun oleh Ceobe.');
+      hint('Jalankan `ceobe log` untuk melihat detail log eksekusi.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      printError('Eksekusi gagal', msg);
     }
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe index
+// ─────────────────────────────────────────────────────────────────────────────
 program
-  .command('audit [prefix]')
-  .description('Phase 1.5: Audit your edited plans for conflicts before execution. Prefix is empty for new projects, or "feature-" for features.')
-  .action(async (prefix: string = '') => {
-    printModeBadge();
-    console.log(chalk.blue(`Auditing plans in .ceobe/ folder with prefix '${prefix}'...`));
-    
+  .command('index')
+  .description('🧠  Index workspace untuk semantic memory (RAG)')
+  .action(async () => {
+    printBanner();
+    printSection('🧠 Mengindeks Workspace...');
+    info(`Target: ${chalk.cyan(env.TARGET_PROJECT_DIR)}`);
     try {
-      const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
-      const brdPath = path.join(ceobeDir, prefix ? `${prefix}brd.md` : 'brd.md');
-      const designPath = path.join(ceobeDir, prefix ? `${prefix}design.md` : 'design.md');
-      const archPath = path.join(ceobeDir, prefix ? `${prefix}architecture.md` : 'architecture.md');
-      const taskPath = path.join(ceobeDir, prefix ? `${prefix}task.md` : 'task.md');
-      const devopsPath = path.join(ceobeDir, prefix ? `${prefix}devops.md` : 'devops.md');
-
-      if (!fs.existsSync(brdPath) || !fs.existsSync(archPath) || !fs.existsSync(taskPath)) {
-        console.error(chalk.red(`\n[Error] Missing plan files in ${ceobeDir}. Expected brd, architecture, and task files.`));
-        return;
-      }
-
-      const combinedContent = `
---- BRD ---
-${fs.readFileSync(brdPath, 'utf8')}
---- DESIGN ---
-${fs.existsSync(designPath) ? fs.readFileSync(designPath, 'utf8') : ''}
---- ARCHITECTURE ---
-${fs.readFileSync(archPath, 'utf8')}
---- DEVOPS ---
-${fs.existsSync(devopsPath) ? fs.readFileSync(devopsPath, 'utf8') : ''}
---- TASK PLAN ---
-${fs.readFileSync(taskPath, 'utf8')}
-      `;
-
-      // Simple heuristic: read the BRD description to guess the skills again
-      const briefDescription = fs.readFileSync(brdPath, 'utf8').substring(0, 500);
-      const selectedSkills = await selectRelevantSkills(briefDescription);
-
-      const result = await auditPlan(combinedContent, selectedSkills);
-      
-      if (result.passed) {
-        markPhaseComplete('audit', 'execute');
-        console.log(chalk.green(`\nYou are cleared to run: npx ceobe execute ${prefix ? prefix + 'task.md' : ''}\n`));
-      } else {
-        console.log(chalk.yellow(`\nPlease fix the above issues in your markdown files, then run 'ceobe audit' again.\n`));
-      }
-    } catch (err) {
-      console.error(chalk.red('\n[Error] Audit failed.'));
-      console.error(err);
+      await indexWorkspace();
+      ok('Workspace berhasil diindeks. Ceobe kini memiliki memori semantik proyek ini.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      printError('Indexing gagal', msg);
     }
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe doctor
+// ─────────────────────────────────────────────────────────────────────────────
 program
   .command('doctor')
-  .description('Diagnose system health, API connectivity, and workspace status.')
+  .description('🩺  Diagnosa API key, provider, dan status workspace')
   .action(async () => {
+    printBanner();
     await runDoctor();
   });
 
-program
-  .command('reset')
-  .description('DANGEROUS: Clear the .ceobe/ directory and reset the workspace state.')
-  .option('--yes', 'Skip confirmation prompt', false)
-  .action(async (options: { yes: boolean }) => {
-    const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
-    if (!fs.existsSync(ceobeDir)) {
-      console.log(chalk.yellow('\n[Info] Folder .ceobe/ tidak ditemukan. Workspace sudah bersih.\n'));
-      return;
-    }
-
-    if (!options.yes) {
-      console.log(chalk.red.bold('\n⚠️  WARNING: Ini akan menghapus SEMUA rencana, arsitektur, dan log di .ceobe/'));
-      console.log(chalk.yellow('Perubahan pada source code Anda TETAP AMAN.\n'));
-      // Since this is a CLI action, we'd usually use a prompt library, 
-      // but for simplicity in this context we'll ask the user to use --yes
-      console.log(chalk.gray('Untuk melanjutkan, jalankan: ceobe reset --yes\n'));
-      return;
-    }
-
-    fs.rmSync(ceobeDir, { recursive: true, force: true });
-    console.log(chalk.green('\n✅ Workspace has been reset. All plans and logs cleared.\n'));
-  });
-
-program
-  .command('log')
-  .description('Show the latest execution log from the workspace.')
-  .action(() => {
-    const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
-    if (!fs.existsSync(logPath)) {
-      console.error(chalk.red('\n[Error] No execution log found. Run ceobe execute first.\n'));
-      return;
-    }
-    const content = fs.readFileSync(logPath, 'utf8');
-    console.log(chalk.cyan('\n--- Latest Execution Logs ---\n'));
-    // Show last 50 lines
-    const lines = content.split('\n').slice(-50).join('\n');
-    console.log(lines);
-    console.log(chalk.cyan('\n----------------------------\n'));
-  });
-
-program
-  .command('auto [description]')
-  .description('Run the Supervisor Agent to autonomously plan, audit, auto-correct, and execute.')
-  .option('--ask', 'Ask for confirmation before executing the plan', false)
-  .option('--feature', 'Run as a feature build instead of a new project', false)
-  .option('--file <path>', 'Use an external PRD/BRD file as the source')
-  .action(async (description: string | undefined, options: { ask: boolean, feature: boolean, file?: string }) => {
-    let finalDescription: string | any[] = description || '';
-    if (options.file) {
-      const filePath = path.isAbsolute(options.file) ? options.file : path.join(process.cwd(), options.file);
-      if (!fs.existsSync(filePath)) {
-        console.error(chalk.red(`\n[Error] File tidak ditemukan: ${filePath}`));
-        return;
-      }
-      
-      const ext = path.extname(filePath).toLowerCase();
-      const isImage = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
-      
-      if (isImage) {
-        console.log(chalk.blue(`Reading UI Mockup from image: ${filePath}`));
-        const base64Data = fs.readFileSync(filePath).toString('base64');
-        const mimeType = ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
-        
-        finalDescription = [
-          { type: 'text', text: `Attached is a UI mockup/screenshot for the project requirements. Analyze this visual input along with any description provided: ${description || ''}` },
-          { 
-            type: 'image', 
-            source: { 
-              type: 'base64', 
-              media_type: mimeType, 
-              data: base64Data 
-            } 
-          }
-        ];
-      } else {
-        console.log(chalk.blue(`Reading PRD from file: ${filePath}`));
-        finalDescription = fs.readFileSync(filePath, 'utf8');
-      }
-    }
-
-    if (!finalDescription || (Array.isArray(finalDescription) && finalDescription.length === 0)) {
-      console.error(chalk.red('\n[Error] Silakan masukkan deskripsi atau gunakan opsi --file <path>.'));
-      return;
-    }
-    await runAutonomousLoop(finalDescription, options.ask, options.feature);
-  });
-
-program
-  .command('index')
-  .description('Index the workspace for semantic search memory (RAG).')
-  .action(async () => {
-    console.log(chalk.blue(`Indexing workspace: ${env.TARGET_PROJECT_DIR}`));
-    try {
-      await indexWorkspace();
-    } catch (err) {
-      console.error(chalk.red('\n[Error] Failed to index workspace.'));
-    }
-  });
-
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe mode
+// ─────────────────────────────────────────────────────────────────────────────
 program
   .command('mode [newMode]')
-  .description('Tampilkan atau ubah mode operasi Ceobe. Mode: autonomous (otonom) | ask (bertanya).')
+  .description('🔄  Lihat atau ubah mode eksekusi Ceobe')
+  .addHelpText('after', `
+  Mode yang tersedia:
+    autonomous   Ceobe bekerja penuh otomatis tanpa jeda
+    ask          Ceobe minta persetujuan sebelum setiap aksi destruktif
+
+  Contoh:
+    ceobe mode              ← tampilkan mode aktif
+    ceobe mode autonomous
+    ceobe mode ask
+`)
   .action((newMode?: string) => {
     if (!newMode) {
-      // Display current mode
-      const current = getActiveMode();
-      console.log(chalk.bold('\nMode Aktif Ceobe:'));
+      printBanner();
+      printSection('🔄 Mode Aktif');
       printModeBadge();
-      console.log(chalk.gray('Untuk mengubah mode, jalankan:'));
-      console.log(chalk.cyan('  ceobe mode autonomous') + chalk.gray('  → Eksekusi mandiri tanpa konfirmasi'));
-      console.log(chalk.cyan('  ceobe mode ask') + chalk.gray('        → Minta persetujuan sebelum setiap aksi\n'));
+      console.log('');
+      info('Ubah mode dengan: ' + chalk.cyan('ceobe mode autonomous') + ' atau ' + chalk.cyan('ceobe mode ask'));
       return;
     }
 
     const validModes: CeobeMode[] = ['autonomous', 'ask'];
     if (!validModes.includes(newMode as CeobeMode)) {
-      console.error(chalk.red(`[Error] Mode tidak valid: '${newMode}'. Pilih: autonomous | ask`));
+      printError(`Mode tidak valid: '${newMode}'`, 'Pilih salah satu dari: autonomous | ask', 'ceobe mode autonomous');
       process.exit(1);
     }
-
     setMode(newMode as CeobeMode);
-    console.log(chalk.bold('\n✅ Mode berhasil diubah!'));
+    console.log('');
+    ok(`Mode diubah ke: ${chalk.bold.cyan(newMode)}`);
     printModeBadge();
+    console.log('');
   });
 
-// ── ceobe setup ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe setup
+// ─────────────────────────────────────────────────────────────────────────────
 program
   .command('setup')
-  .description('Jalankan wizard interaktif untuk mengatur semua API key yang dibutuhkan Ceobe.')
+  .description('🔃  Wizard interaktif untuk konfigurasi pertama kali')
   .action(async () => {
+    printBanner();
     await runSetupWizard();
   });
 
-// ── ceobe key ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe log
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('log')
+  .description('📝  Tampilkan log eksekusi terbaru')
+  .option('-n <lines>', 'Jumlah baris terakhir yang ditampilkan', '80')
+  .action((options: { n: string }) => {
+    const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
+    if (!fs.existsSync(logPath)) {
+      printError(
+        'Log tidak ditemukan',
+        'Belum ada eksekusi yang dijalankan di workspace ini.',
+        'ceobe execute'
+      );
+      return;
+    }
+    const n = parseInt(options.n || '80', 10);
+    const content = fs.readFileSync(logPath, 'utf8');
+    const lines = content.split('\n').slice(-n);
+    const logSize = (fs.statSync(logPath).size / 1024).toFixed(1);
+
+    console.log('');
+    console.log(chalk.bold.cyan(`  ═══ Execution Log · ${logSize} KB · (${lines.length} baris terakhir) ════`));
+    console.log('');
+    lines.forEach(line => {
+      if (line.includes('[Error]') || line.includes('ERROR')) {
+        console.log(chalk.red(`  ${line}`));
+      } else if (line.includes('✅') || line.includes('SUCCESS')) {
+        console.log(chalk.green(`  ${line}`));
+      } else if (line.includes('[Tool]') || line.includes('TOOL')) {
+        console.log(chalk.cyan(`  ${line}`));
+      } else {
+        console.log(chalk.dim(`  ${line}`));
+      }
+    });
+    console.log('');
+    console.log(chalk.dim(`  ═══════════════════════════════════════════════════`));
+    console.log('');
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe status — Show current pipeline phase
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('status')
+  .description('📊  Tampilkan status pipeline & progress proyek saat ini')
+  .action(() => {
+    printBanner();
+    printSection('📊 Status Pipeline Proyek');
+    const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+
+    if (!fs.existsSync(ceobeDir)) {
+      warn('Workspace belum diinisialisasi. Belum ada plan yang dibuat.');
+      hint('Mulai dengan: ceobe plan "Deskripsi proyekmu" atau ceobe auto "Deskripsi"');
+      return;
+    }
+
+    // Read state
+    const statePath = path.join(ceobeDir, 'ceobe-state.json');
+    if (fs.existsSync(statePath)) {
+      try {
+        const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+        const PHASE_ORDER = ['plan', 'design', 'audit', 'execute', 'verify', 'devops', 'done'];
+        const PHASE_LABELS: Record<string, string> = {
+          plan: '📋 Planning', design: '🎨 Design', audit: '🔍 Audit',
+          execute: '⚡ Execute', verify: '✅ Verify', devops: '🚀 DevOps', done: '🎉 Done'
+        };
+
+        console.log('');
+        for (const phase of PHASE_ORDER) {
+          const isCompleted = state.completedPhases?.includes(phase);
+          const isCurrent = state.currentPhase === phase;
+          const label = PHASE_LABELS[phase] || phase;
+          if (isCompleted) {
+            console.log(chalk.green(`  ✅  ${label}`));
+          } else if (isCurrent) {
+            console.log(chalk.yellow(`  ▶   ${label}`) + chalk.bold.yellow('  ← SEKARANG'));
+          } else {
+            console.log(chalk.dim(`  ○   ${label}`));
+          }
+        }
+        console.log('');
+        console.log(chalk.dim(`  Terakhir diperbarui: ${state.lastUpdated || '-'}`) );
+        const fileCount = state.completedFiles?.length || 0;
+        if (fileCount > 0) {
+          console.log(chalk.dim(`  File selesai ditulis: ${chalk.cyan(String(fileCount))} file`));
+        }
+      } catch {
+        warn('Gagal membaca state file. Mungkin corrupt.');
+      }
+    } else {
+      info('State file tidak ditemukan. Plan mungkin belum dijalankan.');
+    }
+
+    // Show which plan files exist
+    console.log('');
+    printSection('📁 Dokumen Plan (.ceobe/)');
+    const planFiles = ['brd.md', 'design.md', 'architecture.md', 'devops.md', 'task.md'];
+    for (const f of planFiles) {
+      const fp = path.join(ceobeDir, f);
+      if (fs.existsSync(fp)) {
+        const size = (fs.statSync(fp).size / 1024).toFixed(1);
+        ok(`${f.padEnd(20)} ${chalk.dim(size + ' KB')}`);
+      } else {
+        console.log(chalk.dim(`  ○   ${f.padEnd(20)} belum ada`));
+      }
+    }
+    console.log('');
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe reset
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('reset')
+  .description('💣  Hapus semua plan & state Ceobe di workspace ini')
+  .option('--yes', 'Konfirmasi otomatis tanpa prompt')
+  .action((options: { yes: boolean }) => {
+    const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+    if (!fs.existsSync(ceobeDir)) {
+      warn('Folder .ceobe/ tidak ditemukan. Workspace sudah bersih.');
+      return;
+    }
+
+    if (!options.yes) {
+      console.log('');
+      console.log(chalk.red.bold('  ╔═══ ⚠️  PERINGATAN ══════════════════════════════════════╗'));
+      console.log(chalk.red('  ║  Ini akan menghapus SEMUA plan, arsitektur, state        ║'));
+      console.log(chalk.red('  ║  dan log di folder .ceobe/                               ║'));
+      console.log(chalk.yellow('  ║  Source code proyekmu TETAP AMAN.                        ║'));
+      console.log(chalk.red.bold('  ╚════════════════════════════════════════════════════════╝'));
+      console.log('');
+      hint('Untuk melanjutkan: ' + chalk.cyan('ceobe reset --yes'));
+      console.log('');
+      return;
+    }
+
+    fs.rmSync(ceobeDir, { recursive: true, force: true });
+    console.log('');
+    ok('Workspace berhasil di-reset. Semua plan dan log telah dihapus.');
+    hint('Mulai ulang dengan: ceobe plan "Deskripsi proyekmu"');
+    console.log('');
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe key — API Key management
+// ─────────────────────────────────────────────────────────────────────────────
 const keyCmd = program
   .command('key')
-  .description('Kelola API key Ceobe yang tersimpan di ~/.ceobe/keys.json');
+  .description('🔑  Kelola API key & konfigurasi provider Ceobe');
 
 keyCmd
   .command('list')
-  .description('Tampilkan semua API key yang sudah dikonfigurasi.')
+  .description('Tampilkan semua API key & provider yang dikonfigurasi')
   .action(() => {
+    printBanner();
     printKeyTable();
   });
 
 keyCmd
   .command('set <provider> <value>')
-  .description(
-    'Simpan API key untuk provider tertentu.\n' +
-    '  Provider: gemini, anthropic, glm, kimi, deepseek, groq, openai, qwen, together\n' +
-    '  Contoh: ceobe key set gemini AIzaSy...'
-  )
+  .description('Simpan API key atau konfigurasi untuk provider tertentu')
+  .addHelpText('after', `
+  Provider API key:
+    gemini, anthropic, glm, kimi, deepseek, groq, openai, qwen, together
+
+  Konfigurasi provider (tidak butuh API key):
+    ceobe-planner-provider   → Provider untuk Planner (gemini / deepseek / glm / ...)
+    ceobe-executor-provider  → Provider untuk Executor (claude / deepseek / glm / ...)
+    ceobe-planner-model      → Override model Planner
+    ceobe-executor-model     → Override model Executor
+
+  Contoh:
+    ceobe key set gemini AIzaSy...
+    ceobe key set deepseek sk-...
+    ceobe key set ceobe-planner-provider deepseek
+    ceobe key set ceobe-executor-provider deepseek
+    ceobe key set ceobe-executor-model deepseek-reasoner
+`)
   .action((provider: string, value: string) => {
     const def = findKeyDef(provider);
     if (!def) {
       const available = KEY_DEFINITIONS.map(d => d.provider).join(', ');
-      console.error(chalk.red(`[Error] Provider '${provider}' tidak dikenali.`));
-      console.error(chalk.yellow(`Provider yang tersedia: ${available}`));
+      printError(
+        `Provider '${provider}' tidak dikenali`,
+        `Provider yang tersedia: ${available}`,
+        `ceobe key set <provider> <value>`
+      );
       process.exit(1);
     }
     setKey(def.envKey, value);
-    console.log(chalk.green(`\n✅ ${def.label} (${def.envKey}) berhasil disimpan di ~/.ceobe/keys.json\n`));
+    console.log('');
+    ok(`${chalk.bold(def.label)} berhasil disimpan.`);
+    hint(`Key tersimpan di ~/.ceobe/keys.json`);
+    if (def.envKey.includes('PROVIDER')) {
+      hint(`Jalankan ${chalk.cyan('ceobe doctor')} untuk memverifikasi konfigurasi baru Anda.`);
+    }
+    console.log('');
+  });
+
+keyCmd
+  .command('get <provider>')
+  .description('Tampilkan nilai API key untuk provider tertentu (tersensor)')
+  .action((provider: string) => {
+    const def = findKeyDef(provider);
+    if (!def) {
+      printError(`Provider '${provider}' tidak dikenali`);
+      process.exit(1);
+    }
+    const stored = readAllKeys();
+    const value = stored[def.envKey] || process.env[def.envKey] || '';
+    console.log('');
+    if (value) {
+      const source = stored[def.envKey] ? chalk.green('ceobe key store') : chalk.gray('system env / .env');
+      ok(`${chalk.bold(def.label)}`);
+      console.log(`     ${chalk.dim('Key    :')} ${chalk.cyan(maskKey(value))}`);
+      console.log(`     ${chalk.dim('Source :')} ${source}`);
+      console.log(`     ${chalk.dim('Env Var:')} ${def.envKey}`);
+    } else {
+      warn(`${def.label} belum dikonfigurasi.`);
+      hint(`Atur dengan: ceobe key set ${def.provider} <value>`);
+      hint(`Dapatkan key di: ${def.docsUrl}`);
+    }
+    console.log('');
   });
 
 keyCmd
   .command('remove <provider>')
-  .description('Hapus API key untuk provider tertentu dari penyimpanan Ceobe.')
+  .description('Hapus API key untuk provider tertentu')
   .action((provider: string) => {
     const def = findKeyDef(provider);
     if (!def) {
-      console.error(chalk.red(`[Error] Provider '${provider}' tidak dikenali.`));
+      printError(`Provider '${provider}' tidak dikenali`);
       process.exit(1);
     }
     const removed = removeKey(def.envKey);
+    console.log('');
     if (removed) {
-      console.log(chalk.green(`\n✅ ${def.envKey} berhasil dihapus dari ~/.ceobe/keys.json\n`));
+      ok(`${def.envKey} berhasil dihapus dari ~/.ceobe/keys.json`);
     } else {
-      console.log(chalk.yellow(`\n⚠️  ${def.envKey} tidak ditemukan di penyimpanan Ceobe.\n`));
+      warn(`${def.envKey} tidak ditemukan di penyimpanan Ceobe.`);
     }
+    console.log('');
   });
 
-// Parse the arguments
+// ─────────────────────────────────────────────────────────────────────────────
+// Help & default (no args)
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('help')
+  .description('Tampilkan panduan lengkap Ceobe')
+  .action(() => printHelp());
+
+// Parse args
 program.parse(process.argv);
 
-// If no arguments passed, show help
+// No args → show custom help
 if (!process.argv.slice(2).length) {
-  program.outputHelp();
+  printHelp();
 }

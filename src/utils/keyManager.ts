@@ -63,23 +63,55 @@ export interface KeyDefinition {
   envKey: string;        // The actual env var name (e.g. GEMINI_API_KEY)
   provider: string;      // Friendly provider slug (e.g. gemini)
   label: string;         // Human-readable label
-  required: boolean;     // Is it required for core Ceobe functions?
+  required: boolean;     // Deprecated: use getRequiredKeyForActiveProviders() instead
   docsUrl: string;       // Where to get the key
+}
+
+/**
+ * Dynamically determines which API keys are required based on the
+ * currently selected planner and executor providers.
+ * Called by doctor.ts and setup wizard to give accurate feedback.
+ */
+export function getRequiredKeyForActiveProviders(): string[] {
+  const plannerProvider = (process.env.CEOBE_PLANNER_PROVIDER || 'gemini').toLowerCase();
+  const executorProvider = (process.env.CEOBE_EXECUTOR_PROVIDER || 'claude').toLowerCase();
+  const embeddingProvider = (process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider).toLowerCase();
+
+  const PROVIDER_KEY_MAP: Record<string, string> = {
+    gemini: 'GEMINI_API_KEY',
+    claude: 'ANTHROPIC_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    glm: 'GLM_API_KEY',
+    kimi: 'KIMI_API_KEY',
+    deepseek: 'DEEPSEEK_API_KEY',
+    groq: 'GROQ_API_KEY',
+    together: 'TOGETHER_API_KEY',
+    qwen: 'QWEN_API_KEY',
+    openai: 'OPENAI_API_KEY',
+    ollama: '', // No key needed for local
+  };
+
+  const required = new Set<string>();
+  [plannerProvider, executorProvider, embeddingProvider].forEach(p => {
+    const key = PROVIDER_KEY_MAP[p];
+    if (key) required.add(key);
+  });
+  return Array.from(required);
 }
 
 export const KEY_DEFINITIONS: KeyDefinition[] = [
   {
     envKey: 'GEMINI_API_KEY',
     provider: 'gemini',
-    label: 'Google Gemini (Planner AI)',
-    required: true,
+    label: 'Google Gemini',
+    required: false,
     docsUrl: 'https://aistudio.google.com/app/apikey',
   },
   {
     envKey: 'ANTHROPIC_API_KEY',
     provider: 'anthropic',
-    label: 'Anthropic Claude (Default Executor)',
-    required: true,
+    label: 'Anthropic Claude',
+    required: false,
     docsUrl: 'https://console.anthropic.com/settings/keys',
   },
   {
@@ -212,10 +244,15 @@ export function maskKey(value: string): string {
 
 export function printKeyTable(): void {
   const stored = readAllKeys();
-  console.log(chalk.bold('\n🔑 API Keys Ceobe (disimpan di ~/.ceobe/keys.json)\n'));
+  const activeRequiredKeys = getRequiredKeyForActiveProviders();
+  const plannerProvider = process.env.CEOBE_PLANNER_PROVIDER || 'gemini';
+  const executorProvider = process.env.CEOBE_EXECUTOR_PROVIDER || 'claude';
 
-  const requiredKeys = KEY_DEFINITIONS.filter((k) => k.required);
-  const optionalKeys = KEY_DEFINITIONS.filter((k) => !k.required);
+  console.log(chalk.bold('\n🔑 API Keys Ceobe (disimpan di ~/.ceobe/keys.json)\n'));
+  console.log(chalk.gray(`  Planner: ${plannerProvider}  |  Executor: ${executorProvider}\n`));
+
+  const requiredKeys = KEY_DEFINITIONS.filter((k) => activeRequiredKeys.includes(k.envKey));
+  const optionalKeys = KEY_DEFINITIONS.filter((k) => !activeRequiredKeys.includes(k.envKey));
 
   const printGroup = (title: string, keys: KeyDefinition[]) => {
     console.log(chalk.underline(title));
@@ -228,7 +265,7 @@ export function printKeyTable(): void {
         ? chalk.gray('.env / system')
         : '';
       const masked = maskKey(value);
-      const tag = def.required && !value ? chalk.bgRed.white(' WAJIB ') : '';
+      const tag = activeRequiredKeys.includes(def.envKey) && !value ? chalk.bgRed.white(' WAJIB ') : '';
       console.log(
         `  ${chalk.cyan(def.provider.padEnd(20))} ${masked.padEnd(30)} ${source} ${tag}`
       );
@@ -236,7 +273,7 @@ export function printKeyTable(): void {
     console.log('');
   };
 
-  printGroup('WAJIB (untuk Planner & Executor default)', requiredKeys);
+  printGroup('DIPERLUKAN (untuk provider aktif Anda)', requiredKeys);
   printGroup('OPSIONAL (untuk provider alternatif)', optionalKeys);
   console.log(chalk.gray('Untuk mengatur key: ceobe key set <provider> <value>'));
   console.log(chalk.gray('Contoh: ceobe key set gemini AIza...\n'));

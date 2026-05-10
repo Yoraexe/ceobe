@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { env, getGatewayUrl } from '../config/env';
-import { readAllKeys, KEY_DEFINITIONS } from './keyManager';
+import { readAllKeys, KEY_DEFINITIONS, getRequiredKeyForActiveProviders } from './keyManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -11,19 +11,51 @@ const execAsync = promisify(exec);
 export async function runDoctor(): Promise<void> {
   console.log(chalk.bold.cyan('\n🩺 Ceobe Diagnostic Tool\n'));
 
-  // 1. Check API Keys
-  console.log(chalk.bold('1. API Keys & Connectivity:'));
+  // 0. Show active provider configuration
+  const plannerProvider = process.env.CEOBE_PLANNER_PROVIDER || 'gemini (default)';
+  const plannerModel = process.env.CEOBE_PLANNER_MODEL || '(default model)';
+  const executorProvider = process.env.CEOBE_EXECUTOR_PROVIDER || 'claude (default)';
+  const executorModel = process.env.CEOBE_EXECUTOR_MODEL || '(default model)';
+  const embeddingProvider = process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider;
+
+  console.log(chalk.bold('0. Active Provider Configuration:'));
+  console.log(`  ${chalk.cyan('Planner  ')}  →  ${chalk.white(plannerProvider)} / ${chalk.gray(plannerModel)}`);
+  console.log(`  ${chalk.cyan('Executor ')}  →  ${chalk.white(executorProvider)} / ${chalk.gray(executorModel)}`);
+  console.log(`  ${chalk.cyan('Embedding')}  →  ${chalk.white(embeddingProvider)}`);
+  console.log(chalk.gray('  (Change with: ceobe key set ceobe-planner-provider <provider>)'));
+
+  // 1. Check API Keys — only for active providers
+  console.log(chalk.bold('\n1. API Keys (for active providers):'));
   const storedKeys = readAllKeys();
+  const requiredEnvKeys = getRequiredKeyForActiveProviders();
   let keysOk = true;
 
-  for (const def of KEY_DEFINITIONS) {
-    const value = storedKeys[def.envKey] || process.env[def.envKey];
-    if (def.required && !value) {
-      console.log(chalk.red(`  ✗ ${def.label} (${def.envKey}) is missing.`));
+  for (const envKey of requiredEnvKeys) {
+    const def = KEY_DEFINITIONS.find(d => d.envKey === envKey);
+    const label = def?.label || envKey;
+    const value = storedKeys[envKey] || process.env[envKey];
+    if (!value) {
+      console.log(chalk.red(`  ✗ ${label} (${envKey}) is MISSING — required for your active provider.`));
+      console.log(chalk.yellow(`    Fix: ceobe key set ${def?.provider || envKey.toLowerCase().replace('_api_key', '')} <your-key>`));
       keysOk = false;
-    } else if (value) {
-      console.log(chalk.green(`  ✓ ${def.label} is configured.`));
+    } else {
+      console.log(chalk.green(`  ✓ ${label} is configured.`));
     }
+  }
+
+  // Show other configured optional keys
+  const otherConfigured = KEY_DEFINITIONS.filter(d =>
+    !requiredEnvKeys.includes(d.envKey) &&
+    (storedKeys[d.envKey] || process.env[d.envKey])
+  );
+  if (otherConfigured.length > 0) {
+    console.log(chalk.gray(`  ○ Additional keys configured: ${otherConfigured.map(d => d.provider).join(', ')}`));
+  }
+
+  if (keysOk) {
+    console.log(chalk.green('\n  All required keys for your active providers are set. ✅'));
+  } else {
+    console.log(chalk.yellow('\n  Run `ceobe setup` to configure missing keys.'));
   }
 
   // 2. Check Dependencies
