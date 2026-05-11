@@ -1,12 +1,11 @@
 // Module: src/ai/providers/router.ts
-// Purpose: The Provider Router - reads CEOBE_EXECUTOR env vars and returns
+// Purpose: The Provider Router - identifies providers from environment and returns
 //          the correct IProviderAdapter instance. This is the ONLY place where
 //          provider selection logic lives. executor.ts stays completely clean.
 // Caller: src/ai/executor.ts
 // Dependencies: AnthropicAdapter, OpenAICompatibleAdapter, env, types
 // Side Effects: none
 
-import { env } from '../../config/env';
 import { AnthropicAdapter } from './anthropicAdapter';
 import { OpenAICompatibleAdapter } from './openAICompatibleAdapter';
 import { GeminiAdapter } from './geminiAdapter';
@@ -36,8 +35,19 @@ const KNOWN_PROVIDERS: Record<string, { baseURL: string; defaultModel: string }>
  */
 export function createProviderAdapter(role: 'planner' | 'executor' = 'executor'): IProviderAdapter {
   const roleUpper = role.toUpperCase();
-  const provider = (process.env[`CEOBE_${roleUpper}_PROVIDER`] || (role === 'planner' ? 'gemini' : 'claude')).toLowerCase();
-  const modelOverride = process.env[`CEOBE_${roleUpper}_MODEL`];
+  const otherRole = role === 'planner' ? 'EXECUTOR' : 'PLANNER';
+  
+  // Try specific role first, then fallback to the other role's provider
+  const provider = (process.env[`CEOBE_${roleUpper}_PROVIDER`] || process.env[`CEOBE_${otherRole}_PROVIDER`] || '').toLowerCase();
+  const modelOverride = process.env[`CEOBE_${roleUpper}_MODEL`] || process.env[`CEOBE_${otherRole}_MODEL`];
+
+  if (!provider) {
+    throw new Error(
+      `Provider untuk ${roleUpper} belum dikonfigurasi.\n` +
+      `Gunakan: ceobe key set ${role}-provider <name>\n` +
+      `Contoh: ceobe key set planner-provider gemini`
+    );
+  }
 
   if (provider === 'gemini') {
     const modelId = modelOverride || KNOWN_PROVIDERS.gemini.defaultModel;

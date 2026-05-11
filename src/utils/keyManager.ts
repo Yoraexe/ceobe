@@ -73,8 +73,12 @@ export interface KeyDefinition {
  * Called by doctor.ts and setup wizard to give accurate feedback.
  */
 export function getRequiredKeyForActiveProviders(): string[] {
-  const plannerProvider = (process.env.CEOBE_PLANNER_PROVIDER || 'gemini').toLowerCase();
-  const executorProvider = (process.env.CEOBE_EXECUTOR_PROVIDER || 'claude').toLowerCase();
+  // Global Fallback: If one is set but the other isn't, they share the same provider.
+  const rawPlanner = (process.env.CEOBE_PLANNER_PROVIDER || '').toLowerCase();
+  const rawExecutor = (process.env.CEOBE_EXECUTOR_PROVIDER || '').toLowerCase();
+  
+  const plannerProvider = rawPlanner || rawExecutor;
+  const executorProvider = rawExecutor || rawPlanner;
   const embeddingProvider = (process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider).toLowerCase();
 
   const PROVIDER_KEY_MAP: Record<string, string> = {
@@ -93,6 +97,7 @@ export function getRequiredKeyForActiveProviders(): string[] {
 
   const required = new Set<string>();
   [plannerProvider, executorProvider, embeddingProvider].forEach(p => {
+    if (!p) return; // Skip if not set
     const key = PROVIDER_KEY_MAP[p];
     if (key) required.add(key);
   });
@@ -245,19 +250,30 @@ export function maskKey(value: string): string {
 export function printKeyTable(): void {
   const stored = readAllKeys();
   const activeRequiredKeys = getRequiredKeyForActiveProviders();
-  const plannerProvider = process.env.CEOBE_PLANNER_PROVIDER || 'gemini';
-  const executorProvider = process.env.CEOBE_EXECUTOR_PROVIDER || 'claude';
+  
+  const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER || '';
+  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER || '';
+  
+  const plannerProvider = rawPlanner || rawExecutor;
+  const executorProvider = rawExecutor || rawPlanner;
 
   console.log(chalk.bold('\n🔑 API Keys Ceobe (disimpan di ~/.ceobe/keys.json)\n'));
-  console.log(chalk.gray(`  Planner: ${plannerProvider}  |  Executor: ${executorProvider}\n`));
+  
+  const plannerLabel = plannerProvider ? chalk.cyan(plannerProvider.toUpperCase()) : chalk.yellow('(BELUM DISET)');
+  const executorLabel = executorProvider ? chalk.cyan(executorProvider.toUpperCase()) : chalk.yellow('(BELUM DISET)');
+  
+  console.log(chalk.gray(`  Planner: ${plannerLabel}  |  Executor: ${executorLabel}\n`));
 
   const requiredKeys = KEY_DEFINITIONS.filter((k) => activeRequiredKeys.includes(k.envKey));
-  const optionalKeys = KEY_DEFINITIONS.filter((k) => !activeRequiredKeys.includes(k.envKey));
+  const optionalKeys = KEY_DEFINITIONS.filter((k) => !activeRequiredKeys.includes(k.envKey) && !k.envKey.includes('PROVIDER') && !k.envKey.includes('MODEL'));
+  const configKeys = KEY_DEFINITIONS.filter((k) => k.envKey.includes('PROVIDER') || k.envKey.includes('MODEL'));
 
-  const printGroup = (title: string, keys: KeyDefinition[]) => {
+  const printGroup = (title: string, keys: KeyDefinition[], emptyMsg?: string) => {
     console.log(chalk.underline(title));
+    if (keys.length === 0 && emptyMsg) {
+      console.log(chalk.dim(`  ${emptyMsg}`));
+    }
     for (const def of keys) {
-      // Priority: stored key > process.env
       const value = stored[def.envKey] || process.env[def.envKey] || '';
       const source = stored[def.envKey]
         ? chalk.green('ceobe key')
@@ -273,10 +289,18 @@ export function printKeyTable(): void {
     console.log('');
   };
 
-  printGroup('DIPERLUKAN (untuk provider aktif Anda)', requiredKeys);
-  printGroup('OPSIONAL (untuk provider alternatif)', optionalKeys);
-  console.log(chalk.gray('Untuk mengatur key: ceobe key set <provider> <value>'));
-  console.log(chalk.gray('Contoh: ceobe key set gemini AIza...\n'));
+  if (requiredKeys.length > 0) {
+    printGroup('DIPERLUKAN (untuk provider aktif Anda)', requiredKeys);
+  } else {
+    console.log(chalk.yellow('⚠️  DIPERLUKAN (untuk provider aktif Anda)'));
+    console.log(chalk.dim('  Pilih provider planner/executor terlebih dahulu agar key yang diperlukan muncul di sini.\n'));
+  }
+
+  printGroup('KONFIGURASI PROVIDER (pilih model)', configKeys);
+  printGroup('API KEYS LAINNYA (opsional)', optionalKeys);
+
+  console.log(chalk.gray('Untuk mengatur key/provider: ceobe key set <provider> <value>'));
+  console.log(chalk.gray('Contoh: ceobe key set planner-provider deepseek\n'));
 }
 
 // ─────────────────────────────────────────────────────────────

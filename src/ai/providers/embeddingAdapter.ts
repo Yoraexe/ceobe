@@ -107,12 +107,18 @@ export function createEmbeddingAdapter(): IEmbeddingAdapter {
 
   // Fallback to Planner provider if no explicit embedding provider is set
   if (!provider) {
-    const plannerProv = (process.env.CEOBE_PLANNER_PROVIDER || 'gemini').toLowerCase();
-    if (plannerProv === 'gemini' || EMBEDDING_KNOWN_PROVIDERS[plannerProv]) {
+    const plannerProv = (process.env.CEOBE_PLANNER_PROVIDER || process.env.CEOBE_EXECUTOR_PROVIDER || '').toLowerCase();
+    if (plannerProv && (plannerProv === 'gemini' || EMBEDDING_KNOWN_PROVIDERS[plannerProv])) {
       provider = plannerProv;
-    } else {
-      provider = 'gemini'; // Ultimate fallback
     }
+  }
+
+  if (!provider) {
+    throw new Error(
+      `Embedding Provider belum dikonfigurasi.\n` +
+      `Gunakan: ceobe key set embedding-provider <name>\n` +
+      `Contoh: ceobe key set embedding-provider gemini`
+    );
   }
 
   // Dimension mismatch safety: if provider changes, we should warn the user

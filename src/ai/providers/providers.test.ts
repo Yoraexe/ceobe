@@ -57,13 +57,23 @@ describe('Provider Router (createProviderAdapter)', () => {
     delete process.env.OPENAI_API_KEY;
   });
 
-  it('should return a GeminiAdapter by default for Planner', () => {
+  it('should throw error if no provider is configured for Planner', () => {
+    expect(() => createProviderAdapter('planner')).toThrow(/Provider untuk PLANNER belum dikonfigurasi/);
+  });
+
+  it('should throw error if no provider is configured for Executor', () => {
+    expect(() => createProviderAdapter('executor')).toThrow(/Provider untuk EXECUTOR belum dikonfigurasi/);
+  });
+
+  it('should return a GeminiAdapter when explicitly set for Planner', () => {
+    process.env.CEOBE_PLANNER_PROVIDER = 'gemini';
     const adapter = createProviderAdapter('planner');
     expect(adapter).toBeInstanceOf(GeminiAdapter);
     expect(adapter.name).toBe('gemini');
   });
 
-  it('should return an AnthropicAdapter by default for Executor', () => {
+  it('should return an AnthropicAdapter when explicitly set for Executor', () => {
+    process.env.CEOBE_EXECUTOR_PROVIDER = 'claude';
     const adapter = createProviderAdapter('executor');
     expect(adapter).toBeInstanceOf(AnthropicAdapter);
     expect(adapter.name).toBe('anthropic');

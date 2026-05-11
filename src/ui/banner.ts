@@ -5,15 +5,24 @@ import chalk from 'chalk';
 import * as path from 'path';
 import { env } from '../config/env';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
 // ─────────────────────────────────────────────────────────────
 
 export function printBanner(): void {
-  const plannerProvider = (process.env.CEOBE_PLANNER_PROVIDER || 'gemini').toUpperCase();
-  const executorProvider = (process.env.CEOBE_EXECUTOR_PROVIDER || 'claude').toUpperCase();
+  const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER;
+  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER;
+  
+  const plannerProvider = rawPlanner || rawExecutor;
+  const executorProvider = rawExecutor || rawPlanner;
+  
+  const projectDir = env.TARGET_PROJECT_DIR;
+  const projectName = path.basename(projectDir);
+
+  const plannerDisplay = plannerProvider ? chalk.cyan(plannerProvider.toUpperCase()) : chalk.yellow('(NOT SET)');
+  const executorDisplay = executorProvider ? chalk.cyan(executorProvider.toUpperCase()) : chalk.yellow('(NOT SET)');
 
   console.log('');
   console.log(chalk.cyan.bold('  ██████╗███████╗ ██████╗ ██████╗ ███████╗'));
@@ -28,10 +37,13 @@ export function printBanner(): void {
     chalk.dim(` · v${VERSION}`)
   );
   console.log(
-    chalk.dim(`  🧠 Planner: ${chalk.cyan(plannerProvider)}`) +
-    chalk.dim(`  ·  ⚙️  Executor: ${chalk.cyan(executorProvider)}`) +
-    chalk.dim(`  ·  📂 ${path.basename(env.TARGET_PROJECT_DIR)}`)
+    chalk.dim(`  🧠 Planner: ${plannerDisplay}`) +
+    chalk.dim(`  ·  ⚙️  Executor: ${executorDisplay}`) +
+    chalk.dim(`  ·  📂 ${chalk.white(projectName)}`)
   );
+  if (!plannerProvider || !executorProvider) {
+    console.log(chalk.yellow(`\n  ⚠️  Provider belum dikonfigurasi. Jalankan ${chalk.bold('ceobe setup')} atau ${chalk.bold('ceobe key set planner-provider <name>')}`));
+  }
   console.log('');
 }
 
@@ -153,7 +165,7 @@ export function printHelp(): void {
   console.log(`  ${chalk.cyan('ceobe key get <prov>')}         ${chalk.dim('Cek nilai key (tersensor) untuk provider')}`);
   console.log(`  ${chalk.cyan('ceobe key remove <prov>')}      ${chalk.dim('Hapus API key dari penyimpanan')}`);
   console.log(`  ${chalk.dim('  Provider: gemini · anthropic · deepseek · glm · kimi · groq · openai · ollama')}`);
-  console.log(`  ${chalk.dim('  Config  : ceobe-planner-provider · ceobe-executor-provider · ceobe-planner-model · ceobe-executor-model')}`);
+  console.log(`  ${chalk.dim('  Config  : planner-provider · executor-provider · planner-model · executor-model')}`);
 
   console.log('');
   console.log(chalk.bold('  QUICK START'));

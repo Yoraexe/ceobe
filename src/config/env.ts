@@ -86,14 +86,14 @@ export function loadEnv(): EnvConfig {
     // All keys are optional here — validation is done per-provider in router
     GEMINI_API_KEY: getOptional('GEMINI_API_KEY'),
     ANTHROPIC_API_KEY: getOptional('ANTHROPIC_API_KEY'),
-    // Planner provider routing (defaults to Gemini)
-    CEOBE_PLANNER_PROVIDER: getOptional('CEOBE_PLANNER_PROVIDER') || 'gemini',
+    // Planner provider routing (no defaults)
+    CEOBE_PLANNER_PROVIDER: getOptional('CEOBE_PLANNER_PROVIDER') || '',
     CEOBE_PLANNER_MODEL: getOptional('CEOBE_PLANNER_MODEL'),
-    // Executor provider routing (defaults to Claude)
-    CEOBE_EXECUTOR_PROVIDER: getOptional('CEOBE_EXECUTOR_PROVIDER') || 'claude',
+    // Executor provider routing (no defaults)
+    CEOBE_EXECUTOR_PROVIDER: getOptional('CEOBE_EXECUTOR_PROVIDER') || '',
     CEOBE_EXECUTOR_MODEL: getOptional('CEOBE_EXECUTOR_MODEL'),
-    // Embedding provider routing (defaults to empty, meaning it will fallback to planner)
-    CEOBE_EMBEDDING_PROVIDER: getOptional('CEOBE_EMBEDDING_PROVIDER'),
+    // Embedding provider routing (defaults to planner if unset)
+    CEOBE_EMBEDDING_PROVIDER: getOptional('CEOBE_EMBEDDING_PROVIDER') || '',
     CEOBE_EMBEDDING_MODEL: getOptional('CEOBE_EMBEDDING_MODEL'),
     GLM_API_KEY: getOptional('GLM_API_KEY'),
     KIMI_API_KEY: getOptional('KIMI_API_KEY'),

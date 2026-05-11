@@ -12,9 +12,13 @@ export async function runDoctor(): Promise<void> {
   console.log(chalk.bold.cyan('\n🩺 Ceobe Diagnostic Tool\n'));
 
   // 0. Show active provider configuration
-  const plannerProvider = process.env.CEOBE_PLANNER_PROVIDER || 'gemini (default)';
+  const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER || '';
+  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER || '';
+  
+  const plannerProvider = rawPlanner || rawExecutor || '(not set)';
+  const executorProvider = rawExecutor || rawPlanner || '(not set)';
+  
   const plannerModel = process.env.CEOBE_PLANNER_MODEL || '(default model)';
-  const executorProvider = process.env.CEOBE_EXECUTOR_PROVIDER || 'claude (default)';
   const executorModel = process.env.CEOBE_EXECUTOR_MODEL || '(default model)';
   const embeddingProvider = process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider;
 
@@ -22,7 +26,7 @@ export async function runDoctor(): Promise<void> {
   console.log(`  ${chalk.cyan('Planner  ')}  →  ${chalk.white(plannerProvider)} / ${chalk.gray(plannerModel)}`);
   console.log(`  ${chalk.cyan('Executor ')}  →  ${chalk.white(executorProvider)} / ${chalk.gray(executorModel)}`);
   console.log(`  ${chalk.cyan('Embedding')}  →  ${chalk.white(embeddingProvider)}`);
-  console.log(chalk.gray('  (Change with: ceobe key set ceobe-planner-provider <provider>)'));
+  console.log(chalk.gray(`  (Change with: ${chalk.white('ceobe key set planner-provider <name>')})`));
 
   // 1. Check API Keys — only for active providers
   console.log(chalk.bold('\n1. API Keys (for active providers):'));

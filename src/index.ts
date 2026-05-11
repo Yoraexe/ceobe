@@ -26,7 +26,7 @@ import {
   printNextStep, printError, printHelp
 } from './ui/banner';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const program = new Command();
 
 // ── Suppress default help in favour of our custom one ─────────────────────────
@@ -534,17 +534,17 @@ keyCmd
     gemini, anthropic, glm, kimi, deepseek, groq, openai, qwen, together
 
   Konfigurasi provider (tidak butuh API key):
-    ceobe-planner-provider   → Provider untuk Planner (gemini / deepseek / glm / ...)
-    ceobe-executor-provider  → Provider untuk Executor (claude / deepseek / glm / ...)
-    ceobe-planner-model      → Override model Planner
-    ceobe-executor-model     → Override model Executor
+    planner-provider   → Provider untuk Planner (gemini / deepseek / glm / ...)
+    executor-provider  → Provider untuk Executor (claude / deepseek / glm / ...)
+    planner-model        → Override model Planner
+    executor-model       → Override model Executor
 
   Contoh:
     ceobe key set gemini AIzaSy...
     ceobe key set deepseek sk-...
-    ceobe key set ceobe-planner-provider deepseek
-    ceobe key set ceobe-executor-provider deepseek
-    ceobe key set ceobe-executor-model deepseek-reasoner
+    ceobe key set planner-provider deepseek
+    ceobe key set executor-provider deepseek
+    ceobe key set executor-model deepseek-reasoner
 `)
   .action((provider: string, value: string) => {
     const def = findKeyDef(provider);
