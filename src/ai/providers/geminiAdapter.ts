@@ -20,13 +20,13 @@ export class GeminiAdapter implements IProviderAdapter {
   readonly modelId: string;
   private client: unknown;
 
-  constructor(modelId: string = 'gemini-2.0-pro-exp-02-05') {
+  constructor(modelId: string = 'gemini-2.5-pro') {
     this.modelId = modelId;
   }
 
   private getClient(): Record<string, unknown> {
     if (!this.client) {
-      const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1' });
+      const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1beta' });
       this.client = genAI.models;
     }
     return this.client as Record<string, unknown>;
@@ -60,7 +60,9 @@ export class GeminiAdapter implements IProviderAdapter {
         generationConfig: { temperature },
       })
     );
-    return (response as { text: () => string }).text().trim();
+    const res = response as any;
+    const text = typeof res.text === 'function' ? res.text() : (res.text || '');
+    return text.trim();
   }
 
   async chat(

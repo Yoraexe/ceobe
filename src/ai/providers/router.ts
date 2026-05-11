@@ -17,12 +17,12 @@ import chalk from 'chalk';
  * Maps a provider slug to its base URL.
  */
 const KNOWN_PROVIDERS: Record<string, { baseURL: string; defaultModel: string }> = {
-  claude:   { baseURL: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-4-5' },
-  gemini:   { baseURL: 'https://generativelanguage.googleapis.com', defaultModel: 'gemini-1.5-flash' },
-  glm:      { baseURL: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash' },
-  kimi:     { baseURL: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
-  deepseek: { baseURL: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
-  qwen:     { baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus' },
+  claude:   { baseURL: 'https://api.anthropic.com/v1', defaultModel: 'claude-4-5-sonnet' },
+  gemini:   { baseURL: 'https://generativelanguage.googleapis.com', defaultModel: 'gemini-2.5-flash' },
+  glm:      { baseURL: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-5.1-flash' },
+  kimi:     { baseURL: 'https://api.moonshot.cn/v1', defaultModel: 'kimi-k2.6-plus' },
+  deepseek: { baseURL: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-v3' },
+  qwen:     { baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-3-max' },
   groq:     { baseURL: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
   together: { baseURL: 'https://api.together.xyz/v1', defaultModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo' },
   ollama:   { baseURL: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
