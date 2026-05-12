@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+// Module: src/index.ts
+// Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
+// Caller: Executed directly via terminal CLI.
+// Dependensi: commander, chalk, config/env, ai/planner, ai/executor, ai/supervisor, ui/banner.
+// Main Functions: CLI route handlers for auto, plan, audit, execute, status, reset, key, mode, doctor, index.
+// Side Effects: Reads/writes filesystem files, initiates network communication, manages console process output.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 
@@ -26,7 +33,7 @@ import {
   printNextStep, printError, printHelp
 } from './ui/banner';
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const program = new Command();
 
 // ── Suppress default help in favour of our custom one ─────────────────────────

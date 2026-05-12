@@ -1,7 +1,9 @@
 // Module: src/ai/providers/providers.test.ts
-// Purpose: Unit tests for the Provider Router and adapters.
-// Caller: vitest
-// Dependencies: vitest, providers/router, providers/openAICompatibleAdapter, providers/types
+// Tujuan: Unit test verification suite for dynamic provider adapter routing and instantiation.
+// Caller: vitest test framework.
+// Dependensi: vitest, router, openAICompatibleAdapter, anthropicAdapter, geminiAdapter.
+// Main Functions: Unit tests validating createProviderAdapter logic.
+// Side Effects: Modifies process.env values dynamically during test setup.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createProviderAdapter } from './router';
@@ -85,7 +87,7 @@ describe('Provider Router (createProviderAdapter)', () => {
     const adapter = createProviderAdapter('executor');
     expect(adapter).toBeInstanceOf(OpenAICompatibleAdapter);
     expect(adapter.name).toBe('glm');
-    expect(adapter.modelId).toBe('glm-4-flash');
+    expect(adapter.modelId).toBe('glm-5.1-flash');
   });
 
   it('should allow model override via CEOBE_ROLE_MODEL', () => {

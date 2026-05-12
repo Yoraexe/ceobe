@@ -1,11 +1,15 @@
 // Module: src/ui/banner.ts
-// Purpose: Terminal UI helpers — banner, step indicators, section headers, styled messages.
+// Tujuan: Terminal UI helpers rendering banners, step indicators, section headers, and styled output.
+// Caller: src/index.ts and command handlers.
+// Dependensi: chalk, path, config/env.
+// Main Functions: printBanner, printSection, printStep, ok, warn, fail, info, hint, printNextStep, printError, printHelp.
+// Side Effects: Writes formatted messages directly to console stdout.
 
 import chalk from 'chalk';
 import * as path from 'path';
 import { env } from '../config/env';
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
