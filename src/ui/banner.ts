@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 import { env } from '../config/env';
 
-const VERSION = '1.5.1';
+const VERSION = '1.5.2';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
@@ -142,7 +142,7 @@ export function printHelp(): void {
     ['🤖  auto',    '"Build a REST API in Go"',  'Full autonomous pipeline (plan→audit→execute)'],
     ['📋  plan',    '"Landing page with auth"',   'Generate BRD, design, architecture & task plan'],
     ['🔍  audit',   '',                           'QA-check the plan before execution'],
-    ['⚡  execute', '',                           'Execute the approved task plan'],
+    ['🚀  execute', '',                           'Execute the approved task plan'],
     ['📊  status',  '',                           'Show pipeline progress & plan files'],
     ['🧠  index',   '',                           'Index workspace for semantic memory (RAG)'],
     ['🩺  doctor',  '',                           'Diagnose API keys, providers & workspace'],
@@ -157,7 +157,7 @@ export function printHelp(): void {
   console.log(chalk.dim('  ─────────────────────────────────────────────────'));
   for (const [cmd, arg, desc] of cmds) {
     console.log(
-      `  ${chalk.cyan(cmd.padEnd(18))} ${chalk.gray(arg.padEnd(22))} ${desc ? chalk.dim(desc) : ''}`
+      `  ${chalk.cyan(cmd.padEnd(17))} ${chalk.gray(arg.padEnd(26))} ${desc ? chalk.dim(desc) : ''}`
     );
   }
 
@@ -174,12 +174,12 @@ export function printHelp(): void {
   console.log('');
   console.log(chalk.bold('  QUICK START'));
   console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  console.log(`  ${chalk.dim('1.')} ${chalk.cyan('ceobe setup')}                 ${chalk.dim('Configure your API keys')}`);
+  console.log(`  ${chalk.dim('1.')} ${chalk.cyan('ceobe setup')}                  ${chalk.dim('Configure your API keys')}`);
   console.log(`  ${chalk.dim('2.')} ${chalk.cyan('ceobe auto "your idea"')}       ${chalk.dim('Let Ceobe build it fully autonomously')}`);
   console.log(`  ${chalk.dim('   or')}`);
   console.log(`  ${chalk.dim('2.')} ${chalk.cyan('ceobe plan "your idea"')}       ${chalk.dim('Generate plan for manual review')}`);
-  console.log(`  ${chalk.dim('3.')} ${chalk.cyan('ceobe audit')}                 ${chalk.dim('Verify plan integrity')}`);
-  console.log(`  ${chalk.dim('4.')} ${chalk.cyan('ceobe execute')}               ${chalk.dim('Build the project')}`);
+  console.log(`  ${chalk.dim('3.')} ${chalk.cyan('ceobe audit')}                  ${chalk.dim('Verify plan integrity')}`);
+  console.log(`  ${chalk.dim('4.')} ${chalk.cyan('ceobe execute')}                ${chalk.dim('Build the project')}`);
   console.log('');
   console.log(chalk.dim(`  Docs & source: https://github.com/your-repo/ceobe`));
   console.log('');

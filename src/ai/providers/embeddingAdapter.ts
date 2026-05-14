@@ -4,7 +4,6 @@
 // Dependencies: @google/genai, openai, env, utils/retry
 // Side Effects: HTTP requests to AI providers
 
-import chalk from 'chalk';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../../config/env';
 import { withRetry } from '../../utils/retry';

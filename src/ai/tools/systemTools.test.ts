@@ -11,7 +11,7 @@ vi.mock('fs');
 vi.mock('../../utils/browserAutomation');
 vi.mock('../memory/vectorStore');
 vi.mock('../memory/indexer');
-export const mockExec = vi.fn((cmd, opts, callback) => {
+export const mockExec = vi.fn((_cmd, _opts, callback) => {
   callback(null, { stdout: 'mocked stdout', stderr: '' });
 });
 export const mockSpawn = vi.fn().mockReturnValue({ exitCode: null, kill: vi.fn() });
@@ -119,7 +119,7 @@ describe('systemTools', () => {
       env.CEOBE_SANDBOX = 'docker';
       vi.spyOn(fs, 'existsSync').mockReturnValue(true); // mock go.mod exists
       
-      mockExec.mockImplementationOnce((cmd, opts, cb) => cb(null, { stdout: 'docker out', stderr: '' }));
+      mockExec.mockImplementationOnce((_cmd, _opts, cb) => cb(null, { stdout: 'docker out', stderr: '' }));
 
       await handleToolCall('execute_command', { command: 'go build' });
       expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('docker run --rm'), expect.anything(), expect.anything());

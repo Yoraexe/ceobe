@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as fs from 'fs';
 import * as planner from './planner';
 import * as executor from './executor';
 import { runAutonomousLoop } from './supervisor';
@@ -19,7 +18,7 @@ vi.mock('./memory/indexer', () => ({
   indexWorkspace: vi.fn().mockResolvedValue(undefined)
 }));
 vi.mock('child_process', () => ({
-  exec: vi.fn((cmd, opts, cb) => cb(null, { stdout: 'mock stdout', stderr: '' }))
+  exec: vi.fn((_cmd, _opts, cb) => cb(null, { stdout: 'mock stdout', stderr: '' }))
 }));
 
 // Mock readline
@@ -106,7 +105,7 @@ describe('supervisor', () => {
     vi.spyOn(planner, 'generateDevOpsConfig').mockResolvedValue('devops');
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
-    mockQuestion.mockImplementation((q, cb) => cb('y'));
+    mockQuestion.mockImplementation((_q, cb) => cb('y'));
     
     await runAutonomousLoop('test desc', true);
     
@@ -122,7 +121,7 @@ describe('supervisor', () => {
     vi.spyOn(planner, 'generateImplementationPlan').mockResolvedValue('task');
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
-    mockQuestion.mockImplementation((q, cb) => cb('n'));
+    mockQuestion.mockImplementation((_q, cb) => cb('n'));
     
     await runAutonomousLoop('test desc', true);
     

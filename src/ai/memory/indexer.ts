@@ -9,7 +9,6 @@ import * as path from 'path';
 import { env } from '../../config/env';
 import { createEmbeddingAdapter } from '../providers/embeddingAdapter';
 import { saveEmbeddings, CodeChunk, loadEmbeddings } from './vectorStore';
-import { withRetry } from '../../utils/retry';
 import chalk from 'chalk';
 import ora from 'ora';
 

@@ -21,7 +21,7 @@ vi.mock('ora', () => ({
   default: vi.fn().mockReturnValue({ start: vi.fn().mockReturnThis(), succeed: vi.fn(), fail: vi.fn(), warn: vi.fn() })
 }));
 
-import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, generateDesignSpec, generateDevOpsConfig, auditPlan } from './planner';
+import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, auditPlan } from './planner';
 
 describe('planner', () => {
   beforeEach(() => {

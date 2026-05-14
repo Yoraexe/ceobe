@@ -67,16 +67,6 @@ export interface EnvConfig {
 export function loadEnv(): EnvConfig {
   const missingKeys: string[] = [];
 
-  /** Required keys — app cannot start without these */
-  const getEnv = (key: string): string => {
-    const value = process.env[key];
-    if (!value) {
-      missingKeys.push(key);
-      return '';
-    }
-    return value;
-  };
-
   /** Optional keys — returns empty string if absent, no crash */
   const getOptional = (key: string): string => process.env[key] || '';
 

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { env, getGatewayUrl } from '../config/env';
+import { env } from '../config/env';
 import { readAllKeys, KEY_DEFINITIONS, getRequiredKeyForActiveProviders } from './keyManager';
 import * as fs from 'fs';
 import * as path from 'path';

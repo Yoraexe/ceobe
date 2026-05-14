@@ -1,19 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as readline from 'readline';
-import { readConfig, writeConfig, getActiveMode, setMode, printModeBadge, confirmToolCall, SENSITIVE_TOOLS } from './modeManager';
-import { env } from '../config/env';
+import { readConfig, writeConfig, setMode, printModeBadge, confirmToolCall, SENSITIVE_TOOLS } from './modeManager';
 
 vi.mock('fs');
-vi.mock('path', async () => {
-  const actual = await vi.importActual('path') as any;
-  return { ...actual };
-});
 vi.mock('readline');
-vi.mock('../config/env', () => ({
-  env: { TARGET_PROJECT_DIR: '/test/project' }
-}));
 
 describe('modeManager', () => {
   beforeEach(() => {
@@ -74,7 +65,7 @@ describe('modeManager', () => {
   describe('confirmToolCall', () => {
     it('should return true if user types y', async () => {
       const mockRl = {
-        question: vi.fn().mockImplementation((q, cb) => cb('y')),
+        question: vi.fn().mockImplementation((_q, cb) => cb('y')),
         close: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
@@ -86,7 +77,7 @@ describe('modeManager', () => {
 
     it('should return false if user types n', async () => {
       const mockRl = {
-        question: vi.fn().mockImplementation((q, cb) => cb('n')),
+        question: vi.fn().mockImplementation((_q, cb) => cb('n')),
         close: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
@@ -97,7 +88,7 @@ describe('modeManager', () => {
 
     it('should reject if user types a', async () => {
       const mockRl = {
-        question: vi.fn().mockImplementation((q, cb) => cb('a')),
+        question: vi.fn().mockImplementation((_q, cb) => cb('a')),
         close: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
@@ -107,7 +98,7 @@ describe('modeManager', () => {
 
     it('should handle various tool summaries', async () => {
       const mockRl = {
-        question: vi.fn().mockImplementation((q, cb) => cb('y')),
+        question: vi.fn().mockImplementation((_q, cb) => cb('y')),
         close: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);

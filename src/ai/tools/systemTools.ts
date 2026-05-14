@@ -11,7 +11,7 @@ import { promisify } from 'util';
 import { env } from '../../config/env';
 import { searchEmbeddings } from '../memory/vectorStore';
 import { getEmbedding } from '../memory/indexer';
-import { captureScreenshot, executeBrowserInteraction, BrowserAction } from '../../utils/browserAutomation';
+import { executeBrowserInteraction } from '../../utils/browserAutomation';
 import { markFileComplete } from '../../utils/stateManager';
 
 const execAsync = promisify(exec);

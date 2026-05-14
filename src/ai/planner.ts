@@ -9,7 +9,6 @@ import { createProviderAdapter } from './providers/router';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readCeobeRules, readTemplate, getAvailableSkills, readSpecificSkills } from '../utils/contextLoader';
-import { withRetry } from '../utils/retry';
 import type { NormalizedContentBlock } from './providers/types';
 
 // ─────────────────────────────────────────────────────────────────────────────

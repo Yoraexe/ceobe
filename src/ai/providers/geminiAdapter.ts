@@ -5,7 +5,7 @@
 // Side Effects: Makes HTTP requests to Google Generative AI
 
 import { GoogleGenAI } from '@google/genai';
-import { env, getGatewayUrl } from '../../config/env';
+import { env } from '../../config/env';
 import { withRetry } from '../../utils/retry';
 import type { NormalizedContentBlock } from './types';
 import type {
@@ -67,7 +67,7 @@ export class GeminiAdapter implements IProviderAdapter {
 
   async chat(
     messages: NormalizedMessage[],
-    tools: NormalizedTool[],
+    _tools: NormalizedTool[],
     systemInstruction: string
   ): Promise<NormalizedResponse> {
     // Basic chat implementation for Gemini (can be expanded with tool calling)

@@ -33,7 +33,7 @@ import {
   printNextStep, printError, printHelp
 } from './ui/banner';
 
-const VERSION = '1.5.1';
+const VERSION = '1.5.2';
 const program = new Command();
 
 // ── Suppress default help in favour of our custom one ─────────────────────────
@@ -625,12 +625,13 @@ keyCmd
 program
   .command('help')
   .description('Tampilkan panduan lengkap Ceobe')
-  .action(() => printHelp());
+  .action(() => {
+    printHelp();
+  });
+
+program.action(() => {
+  printHelp();
+});
 
 // Parse args
 program.parse(process.argv);
-
-// No args → show custom help
-if (!process.argv.slice(2).length) {
-  printHelp();
-}
