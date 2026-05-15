@@ -79,6 +79,7 @@ export function getRequiredKeyForActiveProviders(): string[] {
   
   const plannerProvider = rawPlanner || rawExecutor;
   const executorProvider = rawExecutor || rawPlanner;
+  const qaProvider = (process.env.CEOBE_QA_PROVIDER || plannerProvider).toLowerCase();
   const embeddingProvider = (process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider).toLowerCase();
 
   const PROVIDER_KEY_MAP: Record<string, string> = {
@@ -96,7 +97,7 @@ export function getRequiredKeyForActiveProviders(): string[] {
   };
 
   const required = new Set<string>();
-  [plannerProvider, executorProvider, embeddingProvider].forEach(p => {
+  [plannerProvider, executorProvider, qaProvider, embeddingProvider].forEach(p => {
     if (!p) return; // Skip if not set
     const key = PROVIDER_KEY_MAP[p];
     if (key) required.add(key);
@@ -212,6 +213,20 @@ export const KEY_DEFINITIONS: KeyDefinition[] = [
     docsUrl: 'https://github.com/your-repo/ceobe#providers',
   },
   {
+    envKey: 'CEOBE_QA_PROVIDER',
+    provider: 'qa-provider',
+    label: 'QA Auditor Provider (gemini/claude/deepseek/glm/...)',
+    required: false,
+    docsUrl: 'https://github.com/your-repo/ceobe#providers',
+  },
+  {
+    envKey: 'CEOBE_QA_MODEL',
+    provider: 'qa-model',
+    label: 'QA Auditor Model Override (opsional)',
+    required: false,
+    docsUrl: 'https://github.com/your-repo/ceobe#providers',
+  },
+  {
     envKey: 'CEOBE_EMBEDDING_PROVIDER',
     provider: 'embedding-provider',
     label: 'Embedding Provider (gemini/glm/openai/ollama - opsional)',
@@ -256,13 +271,15 @@ export function printKeyTable(): void {
   
   const plannerProvider = rawPlanner || rawExecutor;
   const executorProvider = rawExecutor || rawPlanner;
+  const qaProvider = process.env.CEOBE_QA_PROVIDER || plannerProvider;
 
   console.log(chalk.bold('\n🔑 API Keys Ceobe (disimpan di ~/.ceobe/keys.json)\n'));
   
   const plannerLabel = plannerProvider ? chalk.cyan(plannerProvider.toUpperCase()) : chalk.yellow('(BELUM DISET)');
   const executorLabel = executorProvider ? chalk.cyan(executorProvider.toUpperCase()) : chalk.yellow('(BELUM DISET)');
+  const qaLabel = qaProvider ? chalk.cyan(qaProvider.toUpperCase()) : chalk.yellow('(BELUM DISET)');
   
-  console.log(chalk.gray(`  Planner: ${plannerLabel}  |  Executor: ${executorLabel}\n`));
+  console.log(chalk.gray(`  Planner: ${plannerLabel}  |  Executor: ${executorLabel}  |  QA: ${qaLabel}\n`));
 
   const requiredKeys = KEY_DEFINITIONS.filter((k) => activeRequiredKeys.includes(k.envKey));
   const optionalKeys = KEY_DEFINITIONS.filter((k) => !activeRequiredKeys.includes(k.envKey) && !k.envKey.includes('PROVIDER') && !k.envKey.includes('MODEL'));

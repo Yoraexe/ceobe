@@ -33,7 +33,7 @@ import {
   printNextStep, printError, printHelp
 } from './ui/banner';
 
-const VERSION = '1.5.2';
+const VERSION = '1.6.1';
 const program = new Command();
 
 // ── Suppress default help in favour of our custom one ─────────────────────────
@@ -543,15 +543,17 @@ keyCmd
   Konfigurasi provider (tidak butuh API key):
     planner-provider   → Provider untuk Planner (gemini / deepseek / glm / ...)
     executor-provider  → Provider untuk Executor (claude / deepseek / glm / ...)
+    qa-provider        → Provider untuk QA Auditor (gemini / claude / ...)
     planner-model        → Override model Planner
     executor-model       → Override model Executor
+    qa-model             → Override model QA Auditor
 
   Contoh:
     ceobe key set gemini AIzaSy...
-    ceobe key set deepseek sk-...
     ceobe key set planner-provider deepseek
-    ceobe key set executor-provider deepseek
-    ceobe key set executor-model deepseek-reasoner
+    ceobe key set executor-provider glm
+    ceobe key set qa-provider gemini
+    ceobe key set qa-model gemini-2.5-flash
 `)
   .action((provider: string, value: string) => {
     const def = findKeyDef(provider);
