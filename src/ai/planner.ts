@@ -1,9 +1,10 @@
 // Module: src/ai/planner.ts
 // Purpose: Orchestrates all planning phases (BRD, Design, Architecture, Tasks, DevOps, Audit).
-//          Provider-agnostic: uses createPlannerAdapter() which reads CEOBE_PLANNER_PROVIDER.
+//          Provider-agnostic: uses createPlannerAdapter() for all planning phases.
+//          The AUDIT phase uses a DEDICATED 'qa' role adapter to prevent self-evaluation bias.
 // Caller: src/index.ts, src/ai/supervisor.ts
 // Dependencies: providers/router, contextLoader, chalk, ora
-// Side Effects: HTTP requests to the configured planner AI provider
+// Side Effects: HTTP requests to the configured planner AND qa AI providers
 
 import { createProviderAdapter } from './providers/router';
 import chalk from 'chalk';
@@ -17,6 +18,16 @@ import type { NormalizedContentBlock } from './providers/types';
 function getPlanner() {
   const adapter = createProviderAdapter('planner');
   const tag = `[${adapter.name.toUpperCase()} / ${adapter.modelId}]`;
+  return { adapter, tag };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper — gets a ready-to-use QA auditor adapter and its display name
+// Uses 'qa' role which resolves: CEOBE_QA_PROVIDER → fallback CEOBE_PLANNER_PROVIDER
+// ─────────────────────────────────────────────────────────────────────────────
+function getQaAuditor() {
+  const adapter = createProviderAdapter('qa');
+  const tag = `[QA: ${adapter.name.toUpperCase()} / ${adapter.modelId}]`;
   return { adapter, tag };
 }
 
@@ -317,13 +328,15 @@ ${readTemplate('devops-template.md')}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PHASE 4 — AUDIT
+// PHASE 4 — AUDIT  (uses independent 'qa' role, NOT planner)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function auditPlan(
   combinedContent: string,
   selectedSkills: string[] = []
 ): Promise<{ passed: boolean; feedback?: string }> {
-  const { adapter, tag } = getPlanner();
+  // ⚠️  CRITICAL: Always use the QA auditor, NOT the planner.
+  // The model that designed the plans must NOT also be the one validating them.
+  const { adapter, tag } = getQaAuditor();
   const spinner = ora(`${tag} Auditing project plans for conflicts and rule violations...`).start();
 
   try {
@@ -333,6 +346,9 @@ export async function auditPlan(
     const prompt = `
 You are the Lead Quality Assurance Auditor for the Ceobe AI Engineering System.
 STAGE 4: PLAN AUDIT & VALIDATION.
+
+IMPORTANT: You are an INDEPENDENT auditor. The architect who wrote the plans below is a different AI.
+Your role is to be the adversarial reviewer — look for gaps, contradictions, and blind spots.
 
 Rules:
 ${rules}
@@ -353,10 +369,10 @@ If there are critical conflicts or missing steps, reply with a markdown list of 
 
     const output = await adapter.generate(prompt, 0.1);
     if (output === 'APPROVED') {
-      spinner.succeed(chalk.green('Audit PASSED. Blueprint is ready for execution.'));
+      spinner.succeed(chalk.green(`${tag} Audit PASSED. Blueprint is ready for execution.`));
       return { passed: true };
     } else {
-      spinner.warn(chalk.yellow('Audit FAILED. Conflicts or missing steps detected.'));
+      spinner.warn(chalk.yellow(`${tag} Audit FAILED. Conflicts or missing steps detected.`));
       console.log(chalk.cyan('\n--- Auditor Feedback ---\n'));
       console.log(output);
       console.log(chalk.cyan('\n-------------------------\n'));

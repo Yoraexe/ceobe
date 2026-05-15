@@ -1,10 +1,13 @@
 // Module: src/ai/providers/router.ts
 // Purpose: The Provider Router - identifies providers from environment and returns
 //          the correct IProviderAdapter instance. This is the ONLY place where
-//          provider selection logic lives. executor.ts stays completely clean.
-// Caller: src/ai/executor.ts
-// Dependencies: AnthropicAdapter, OpenAICompatibleAdapter, env, types
+//          provider selection logic lives. planner.ts and executor.ts stay completely clean.
+// Caller: src/ai/planner.ts, src/ai/executor.ts
+// Dependencies: AnthropicAdapter, OpenAICompatibleAdapter, GeminiAdapter, env, types
 // Side Effects: none
+// Role Support: 'planner' | 'executor' | 'qa'
+//   - 'qa' falls back to planner provider if CEOBE_QA_PROVIDER is not set.
+//   - Best practice: configure a DIFFERENT provider for 'qa' to avoid self-evaluation bias.
 
 import { AnthropicAdapter } from './anthropicAdapter';
 import { OpenAICompatibleAdapter } from './openAICompatibleAdapter';
@@ -31,15 +34,34 @@ const KNOWN_PROVIDERS: Record<string, { baseURL: string; defaultModel: string }>
 
 /**
  * Creates and returns the appropriate provider adapter.
- * Supports both 'planner' and 'executor' roles.
+ * Supports 'planner', 'executor', and 'qa' roles.
+ *
+ * QA Role Resolution:
+ *   1. Try CEOBE_QA_PROVIDER / CEOBE_QA_MODEL.
+ *   2. If not set, fall back to CEOBE_PLANNER_PROVIDER / CEOBE_PLANNER_MODEL.
+ * This ensures the QA auditor is always a DIFFERENT "eye" than the Executor.
  */
-export function createProviderAdapter(role: 'planner' | 'executor' = 'executor'): IProviderAdapter {
+export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'executor'): IProviderAdapter {
   const roleUpper = role.toUpperCase();
-  const otherRole = role === 'planner' ? 'EXECUTOR' : 'PLANNER';
-  
-  // Try specific role first, then fallback to the other role's provider
-  const provider = (process.env[`CEOBE_${roleUpper}_PROVIDER`] || process.env[`CEOBE_${otherRole}_PROVIDER`] || '').toLowerCase();
-  const modelOverride = process.env[`CEOBE_${roleUpper}_MODEL`] || process.env[`CEOBE_${otherRole}_MODEL`];
+
+  let provider: string;
+  let modelOverride: string | undefined;
+
+  if (role === 'qa') {
+    // QA: Use dedicated QA provider first, fallback to Planner
+    provider = (process.env['CEOBE_QA_PROVIDER'] || process.env['CEOBE_PLANNER_PROVIDER'] || '').toLowerCase();
+    modelOverride = process.env['CEOBE_QA_MODEL'] || process.env['CEOBE_PLANNER_MODEL'];
+    if (process.env['CEOBE_QA_PROVIDER']) {
+      console.log(chalk.dim(`[Provider Router] Role: QA | Using dedicated QA provider`));
+    } else {
+      console.log(chalk.dim(`[Provider Router] Role: QA | No CEOBE_QA_PROVIDER set — falling back to Planner provider`));
+    }
+  } else {
+    const otherRole = role === 'planner' ? 'EXECUTOR' : 'PLANNER';
+    // Try specific role first, then fallback to the other role's provider
+    provider = (process.env[`CEOBE_${roleUpper}_PROVIDER`] || process.env[`CEOBE_${otherRole}_PROVIDER`] || '').toLowerCase();
+    modelOverride = process.env[`CEOBE_${roleUpper}_MODEL`] || process.env[`CEOBE_${otherRole}_MODEL`];
+  }
 
   if (!provider) {
     throw new Error(

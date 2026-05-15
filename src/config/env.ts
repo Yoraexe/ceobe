@@ -47,6 +47,11 @@ export interface EnvConfig {
   // Executor provider selection
   CEOBE_EXECUTOR_PROVIDER: string;  // 'claude' | 'glm' | 'kimi' | etc.
   CEOBE_EXECUTOR_MODEL: string;     // Optional model override
+  // QA / Auditor provider selection (independent from Planner & Executor)
+  // Best practice: use a DIFFERENT provider than Planner to avoid self-evaluation bias.
+  // Falls back to PLANNER if not set.
+  CEOBE_QA_PROVIDER: string;        // 'gemini' | 'claude' | 'glm' | etc.
+  CEOBE_QA_MODEL: string;           // Optional model override
   // Embedding provider selection
   CEOBE_EMBEDDING_PROVIDER: string; // 'gemini' | 'openai' | 'glm' | etc.
   CEOBE_EMBEDDING_MODEL: string;
@@ -82,6 +87,9 @@ export function loadEnv(): EnvConfig {
     // Executor provider routing (no defaults)
     CEOBE_EXECUTOR_PROVIDER: getOptional('CEOBE_EXECUTOR_PROVIDER') || '',
     CEOBE_EXECUTOR_MODEL: getOptional('CEOBE_EXECUTOR_MODEL'),
+    // QA provider routing (falls back to planner if not explicitly set)
+    CEOBE_QA_PROVIDER: getOptional('CEOBE_QA_PROVIDER') || '',
+    CEOBE_QA_MODEL: getOptional('CEOBE_QA_MODEL'),
     // Embedding provider routing (defaults to planner if unset)
     CEOBE_EMBEDDING_PROVIDER: getOptional('CEOBE_EMBEDDING_PROVIDER') || '',
     CEOBE_EMBEDDING_MODEL: getOptional('CEOBE_EMBEDDING_MODEL'),
