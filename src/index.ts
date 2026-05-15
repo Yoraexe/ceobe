@@ -33,7 +33,7 @@ import {
   printNextStep, printError, printHelp
 } from './ui/banner';
 
-const VERSION = '1.6.1';
+const VERSION = '1.6.2';
 const program = new Command();
 
 // ── Suppress default help in favour of our custom one ─────────────────────────
