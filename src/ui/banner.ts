@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 import { env } from '../config/env';
 
-const VERSION = '1.5.2';
+const VERSION = '1.8.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
