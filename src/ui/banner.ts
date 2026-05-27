@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 import { env } from '../config/env';
 
-const VERSION = '1.8.1';
+const VERSION = '1.8.2';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
@@ -150,6 +150,7 @@ export function printHelp(): void {
     ['🔄  mode',    'autonomous | ask',            'Switch execution mode'],
     ['📝  log',     '[-n <lines>]',               'Show latest execution log'],
     ['🔃  setup',   '',                           'Interactive first-time setup wizard'],
+    ['📡  daemon',  '--telegram',                 'Start Ceobe as a remote Telegram bot'],
     ['💣  reset',   '--yes',                      'Clear all plans and state files'],
   ];
 

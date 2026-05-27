@@ -36,7 +36,7 @@ import {
 import { getCostSummary } from './utils/costTracker';
 import { startTelegramDaemon } from './telegram/telegramDaemon';
 
-const VERSION = '1.8.1';
+const VERSION = '1.8.2';
 const program = new Command();
 
 /**
