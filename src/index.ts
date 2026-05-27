@@ -562,6 +562,7 @@ keyCmd
   .addHelpText('after', `
   Provider API key:
     gemini, anthropic, glm, kimi, deepseek, groq, openai, qwen, together
+    telegram-token, telegram-allowed-users
 
   Konfigurasi provider (tidak butuh API key):
     planner-provider   → Provider untuk Planner (gemini / deepseek / glm / ...)
