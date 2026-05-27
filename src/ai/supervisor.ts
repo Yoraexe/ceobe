@@ -1,8 +1,10 @@
 // Tujuan: Mengorkestrasi seluruh siklus agen dari Perencanaan hingga Eksekusi secara otonom.
 // Caller: src/index.ts (via command `auto`)
-// Dependensi: planner, executor, stateManager, fs, readline (untuk human-in-the-loop)
+// Dependensi: planner, executor, stateManager, gitManager, taskParser, fs, readline
 // Main Functions: runAutonomousLoop
 // Side Effects: Read/write .ceobe/ files, invoke API, execute commands, prompt user.
+// v1.7.0: Multi-Agent Parallel Execution — task plan dipecah menjadi gelombang eksekusi.
+//         Task independen dalam satu gelombang dieksekusi secara paralel.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,6 +18,9 @@ import { indexWorkspace } from './memory/indexer';
 import { activeBackgroundProcesses } from './tools/systemTools';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { createSnapshot, rollbackToSnapshot } from '../utils/gitManager';
+import { parseTaskWaves } from './taskParser';
+import { resetSession, printCostSummary } from '../utils/costTracker';
 import type { NormalizedContentBlock } from './providers/types';
 
 const execAsync = promisify(exec);
@@ -37,6 +42,7 @@ function askUserConfirmation(question: string): Promise<boolean> {
 }
 
 export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
+  resetSession();
   console.log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
   
   const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
@@ -159,6 +165,11 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
       let executionRetry = 0;
       let execFeedback = '';
 
+      // ── Git Snapshot ─────────────────────────────────────────────────────────
+      console.log(chalk.blue(`\n[GitManager] Membuat snapshot sebelum eksekusi AI...`));
+      const snapshotHash = await createSnapshot();
+      // ─────────────────────────────────────────────────────────────────────────
+
       while (!isCodeValid && executionRetry <= MAX_RETRIES) {
         if (executionRetry > 0) {
           console.log(chalk.yellow(`\n[Supervisor] Code Correction Cycle ${executionRetry}/${MAX_RETRIES}...`));
@@ -179,7 +190,45 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
            finalTask += `\n\n[URGENT: FIX THESE ERRORS FROM PREVIOUS RUN]\n${execFeedback}`;
         }
         
-        await executePlan(finalTask, arch, design);
+        // ── Multi-Agent Parallel Execution ────────────────────────────────────────────
+        const waves = parseTaskWaves(finalTask);
+        const totalTasks = waves.reduce((sum, w) => sum + w.tasks.length, 0);
+
+        if (waves.length > 1) {
+          console.log(chalk.cyan(`\n[Parallel Executor] Plan dipecah menjadi ${waves.length} gelombang eksekusi.`));
+          console.log(chalk.dim(`  Total task: ${totalTasks} | Paralel per gelombang: max ${Math.max(...waves.map(w => w.tasks.length))}\n`));
+        }
+
+        for (const wave of waves) {
+          if (wave.tasks.length > 1) {
+            console.log(chalk.magenta(`\n[Parallel Executor] Gelombang ${wave.wave} — ${wave.tasks.length} task berjalan paralel...`));
+            // Execute all tasks in this wave concurrently
+            const waveResults = await Promise.allSettled(
+              wave.tasks.map(waveTask =>
+                executePlan(
+                  waveTask.content + (execFeedback ? `\n\n[FIX ERRORS]\n${execFeedback}` : ''),
+                  arch,
+                  design
+                )
+              )
+            );
+            // Surface any failures but continue to next wave
+            const failures = waveResults.filter(r => r.status === 'rejected');
+            if (failures.length > 0) {
+              failures.forEach(f => {
+                const msg = f.status === 'rejected' ? String(f.reason) : '';
+                console.log(chalk.yellow(`  [Wave ${wave.wave}] Task gagal: ${msg.substring(0, 120)}`));
+              });
+            } else {
+              console.log(chalk.green(`  [Wave ${wave.wave}] Semua task selesai.`));
+            }
+          } else {
+            // Single task in wave — run sequentially as before
+            console.log(chalk.blue(`\n[Parallel Executor] Gelombang ${wave.wave} — 1 task (sequential).`));
+            await executePlan(wave.tasks[0].content, arch, design);
+          }
+        }
+        // ───────────────────────────────────────────────────────────────────────
         markPhaseComplete('execute', 'verify');
 
         console.log(chalk.blue(`\n[Supervisor] Running Post-Execution Verification (Quality Layer)...`));
@@ -272,12 +321,32 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
 
       if (!isCodeValid) {
         console.error(chalk.red(`\n[Supervisor Error] Maximum code correction retries (${MAX_RETRIES}) reached. Verification still failing.`));
+
+        // ── Auto Rollback ───────────────────────────────────────────────────────
+        if (snapshotHash) {
+          console.log(chalk.yellow('\n[GitManager] Pipeline gagal melampaui batas retry. Memulai auto-rollback...'));
+          await rollbackToSnapshot(snapshotHash);
+        } else {
+          console.log(chalk.yellow('[GitManager] Tidak ada snapshot tersedia. Rollback dilewati.'));
+        }
+        // ───────────────────────────────────────────────────────────────────────
+
         return;
       }
     }
 
     // Phase 5 is now merged into execution, but we mark done
     markPhaseComplete('devops', 'done');
+
+    // ── Self-Heal Summary Report ───────────────────────────────────────────────
+    const finalState = readState();
+    const healCount = finalState?.selfHealCount ?? 0;
+    if (healCount > 0) {
+      console.log(chalk.cyan(`\n🩹 [Self-Heal] ${healCount} bug(s) ditemukan dan diperbaiki secara otomatis oleh AI.`));
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
+    printCostSummary();
     console.log(chalk.green.bold(`\n🎉 [Supervisor Agent] Autonomous Workflow Complete! Mission Accomplished.\n`));
 
   } catch (err: unknown) {

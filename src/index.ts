@@ -3,9 +3,10 @@
 // Module: src/index.ts
 // Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
 // Caller: Executed directly via terminal CLI.
-// Dependensi: commander, chalk, config/env, ai/planner, ai/executor, ai/supervisor, ui/banner.
-// Main Functions: CLI route handlers for auto, plan, audit, execute, status, reset, key, mode, doctor, index.
+// Dependensi: commander, chalk, config/env, ai/planner, ai/executor, ai/supervisor, ui/banner, telegram/telegramDaemon.
+// Main Functions: CLI route handlers for auto, plan, audit, execute, status, reset, key, mode, doctor, index, daemon.
 // Side Effects: Reads/writes filesystem files, initiates network communication, manages console process output.
+// v1.7.0: Fase 5 — flag --sandbox mengaktifkan Docker Execution Sandbox via CEOBE_SANDBOX=docker.
 
 import { Command } from 'commander';
 import chalk from 'chalk';
@@ -32,9 +33,20 @@ import {
   printBanner, printSection, printStep, ok, warn, info, hint,
   printNextStep, printError, printHelp
 } from './ui/banner';
+import { getCostSummary } from './utils/costTracker';
+import { startTelegramDaemon } from './telegram/telegramDaemon';
 
-const VERSION = '1.6.2';
+const VERSION = '1.7.0';
 const program = new Command();
+
+/**
+ * Activates Docker sandbox mode by setting CEOBE_SANDBOX=docker in process.env.
+ * The existing wrapInSandbox() in systemTools.ts reads this variable automatically.
+ */
+function activateSandbox(): void {
+  process.env['CEOBE_SANDBOX'] = 'docker';
+  info('🐳 Sandbox Mode aktif — eksekusi diisolasi dalam Docker container.');
+}
 
 // ── Suppress default help in favour of our custom one ─────────────────────────
 program
@@ -76,6 +88,7 @@ program
   .option('--ask', 'Minta konfirmasi sebelum eksekusi (human-in-the-loop)')
   .option('--feature', 'Mode tambah fitur baru ke proyek yang sudah ada')
   .option('--file <path>', 'Gunakan file PRD atau mockup UI sebagai sumber requirement')
+  .option('--sandbox', 'Isolasi eksekusi AI dalam Docker container (requires Docker)')
   .addHelpText('after', `
   Contoh:
     ceobe auto "Build a REST API with Go and PostgreSQL"
@@ -83,9 +96,11 @@ program
     ceobe auto --file mockup.png "tambahkan dark mode"
     ceobe auto --feature "tambahkan fitur payment gateway"
     ceobe auto --ask "Build a Flutter app"   ← pause sebelum eksekusi
+    ceobe auto --sandbox "Build API"          ← eksekusi terisolasi dalam Docker
 `)
-  .action(async (description: string | undefined, options: { ask: boolean; feature: boolean; file?: string }) => {
+  .action(async (description: string | undefined, options: { ask: boolean; feature: boolean; file?: string; sandbox: boolean }) => {
     printBanner();
+    if (options.sandbox) activateSandbox();
 
     let finalDescription: string | object[] = description || '';
     if (options.file) {
@@ -253,15 +268,18 @@ program
 program
   .command('execute [taskFile]')
   .description('⚡  Eksekusi task plan yang sudah diaudit')
+  .option('--sandbox', 'Isolasi eksekusi AI dalam Docker container (requires Docker)')
   .addHelpText('after', `
   Contoh:
     ceobe execute                  ← eksekusi task.md (default)
     ceobe execute feature-task.md  ← eksekusi plan fitur
+    ceobe execute --sandbox        ← eksekusi terisolasi dalam Docker
 `)
-  .action(async (taskFile: string = 'task.md') => {
+  .action(async (taskFile: string = 'task.md', options: { sandbox: boolean }) => {
     printBanner();
     printModeBadge();
     printSection('⚡ Memulai Eksekusi Plan...');
+    if (options.sandbox) activateSandbox();
 
     try {
       const taskPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', taskFile);
@@ -461,6 +479,11 @@ program
         if (fileCount > 0) {
           console.log(chalk.dim(`  File selesai ditulis: ${chalk.cyan(String(fileCount))} file`));
         }
+        const healCount = state.selfHealCount ?? 0;
+        if (healCount > 0) {
+          console.log(chalk.cyan(`  🩹 Self-Heal cycles: ${healCount} (AI memperbaiki ${healCount} error secara otomatis)`));
+        }
+        console.log(chalk.cyan(`  ${getCostSummary()}`));
       } catch {
         warn('Gagal membaca state file. Mungkin corrupt.');
       }
@@ -619,6 +642,37 @@ keyCmd
       warn(`${def.envKey} tidak ditemukan di penyimpanan Ceobe.`);
     }
     console.log('');
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ceobe daemon — Remote orchestration via Telegram
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('daemon')
+  .description('📡  Jalankan Ceobe sebagai daemon remote (Telegram Bot)')
+  .option('--telegram', 'Gunakan Telegram sebagai interface remote')
+  .addHelpText('after', `
+  Setup awal:
+    ceobe key set telegram-token <BOT_TOKEN_DARI_BOTFATHER>
+    ceobe key set telegram-allowed-users <USER_ID_KAMU>
+
+  Cara dapat User ID kamu:
+    Kirim pesan ke @userinfobot di Telegram.
+
+  Contoh:
+    ceobe daemon --telegram
+`)
+  .action(async (options: { telegram: boolean }) => {
+    printBanner();
+    if (!options.telegram) {
+      printError(
+        'Interface diperlukan',
+        'Tentukan interface daemon yang ingin digunakan.',
+        'ceobe daemon --telegram'
+      );
+      process.exit(1);
+    }
+    await startTelegramDaemon();
   });
 
 // ─────────────────────────────────────────────────────────────────────────────

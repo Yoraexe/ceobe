@@ -13,6 +13,7 @@ import { searchEmbeddings } from '../memory/vectorStore';
 import { getEmbedding } from '../memory/indexer';
 import { executeBrowserInteraction } from '../../utils/browserAutomation';
 import { markFileComplete } from '../../utils/stateManager';
+import { handlePluginCall } from '../plugins/pluginLoader';
 
 const execAsync = promisify(exec);
 
@@ -594,7 +595,11 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
       }
 
       default:
-        return `Error: Tool ${toolName} not recognized.`;
+        try {
+          return await handlePluginCall(toolName, input);
+        } catch (e: unknown) {
+          return `Error: Tool ${toolName} not recognized or plugin failed: ${e instanceof Error ? e.message : String(e)}`;
+        }
     }
   } catch (error: unknown) {
     return `Error executing ${toolName}: ${error instanceof Error ? error.message : String(error)}`;

@@ -67,6 +67,7 @@ export interface EnvConfig {
   CEOBE_INSTALL_DIR: string;
   TARGET_PROJECT_DIR: string;
   CEOBE_SANDBOX: 'docker' | 'none';
+  CEOBE_MAX_BUDGET: number;
 }
 
 export function loadEnv(): EnvConfig {
@@ -103,6 +104,7 @@ export function loadEnv(): EnvConfig {
     CEOBE_INSTALL_DIR: getOptional('CEOBE_INSTALL_DIR') || path.resolve(__dirname, '../../'),
     TARGET_PROJECT_DIR: process.cwd(),
     CEOBE_SANDBOX: (process.env.CEOBE_SANDBOX as 'docker' | 'none') || 'none',
+    CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 0,
   };
 
   if (missingKeys.length > 0) {

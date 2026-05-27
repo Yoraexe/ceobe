@@ -4,6 +4,7 @@
 // Caller: src/index.ts, src/ai/executor.ts
 // Dependencies: fs, path, env, readline, chalk
 // Side Effects: Read/write .ceobe/config.json
+// v1.8.0: Tambahan ConfirmationBridge untuk mendelegasikan prompt ke UI lain (Telegram).
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -20,6 +21,27 @@ export type CeobeMode = 'autonomous' | 'ask';
 export interface CeobeConfig {
   mode: CeobeMode;
   updatedAt: string;
+}
+
+/**
+ * Interface for delegating human-in-the-loop confirmations to external interfaces (e.g., Telegram).
+ */
+export interface ConfirmationBridge {
+  /**
+   * Prompts the user via the external interface.
+   * Resolves to true (approve), false (skip), or throws an error (abort pipeline).
+   */
+  requestConfirmation(summary: string): Promise<boolean>;
+}
+
+let activeConfirmationBridge: ConfirmationBridge | null = null;
+
+export function setConfirmationBridge(bridge: ConfirmationBridge): void {
+  activeConfirmationBridge = bridge;
+}
+
+export function clearConfirmationBridge(): void {
+  activeConfirmationBridge = null;
 }
 
 /** Tool calls that require confirmation when mode = ask */
@@ -104,8 +126,6 @@ export async function confirmToolCall(
   toolName: string,
   input: Record<string, unknown>
 ): Promise<boolean> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
   // Build a human-readable summary of the action
   let summary = '';
   if (toolName === 'write_file' || toolName === 'edit_file') {
@@ -124,6 +144,13 @@ export async function confirmToolCall(
     summary = `🔧 ${toolName}: ${JSON.stringify(input).substring(0, 80)}`;
   }
 
+  // Jika ada bridge aktif (misal dari Telegram), delegasikan ke bridge tersebut
+  if (activeConfirmationBridge) {
+    return activeConfirmationBridge.requestConfirmation(summary);
+  }
+
+  // Fallback: gunakan terminal standar (readline)
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve, reject) => {
     console.log('\n' + chalk.bgYellow.black(' KONFIRMASI DIPERLUKAN '));
     console.log(summary);

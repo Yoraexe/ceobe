@@ -1,8 +1,10 @@
 // Tujuan: Membaca seluruh file di workspace, memecah kode menjadi chunks, dan membuat embeddings.
 // Caller: src/index.ts (atau perintah CLI `ceobe index`)
-// Dependensi: fs, path, vectorStore, env, ora, chalk
+// Dependensi: fs, path, vectorStore, env, ora, chalk, astParser
 // Main Functions: indexWorkspace, getEmbedding
 // Side Effects: Read files, call Google API, write to embeddings.json
+// v1.7.0: AST Context Compression — file TypeScript besar dikompresi ke signature-only
+//         sebelum di-embedding, mengurangi token usage hingga ~80%.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,6 +13,7 @@ import { createEmbeddingAdapter } from '../providers/embeddingAdapter';
 import { saveEmbeddings, CodeChunk, loadEmbeddings } from './vectorStore';
 import chalk from 'chalk';
 import ora from 'ora';
+import { extractTypeScriptSignatures, isTypeScriptFile, AST_COMPRESSION_THRESHOLD } from './astParser';
 
 const IGNORED_DIRS = ['node_modules', '.git', 'dist', 'build', 'coverage', '.ceobe'];
 const IGNORED_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.mp4', '.pdf', '.zip', '.tar', '.gz'];
@@ -123,21 +126,36 @@ export async function indexWorkspace(): Promise<void> {
         const stats = fs.statSync(file);
         if (stats.size > 1000000) continue; // Skip files > 1MB
 
-        const content = fs.readFileSync(file, 'utf8');
-        const lines = content.split('\n');
-        
+        const rawContent = fs.readFileSync(file, 'utf8');
+        const lines = rawContent.split('\n');
+        const relPath = path.relative(workspaceRoot, file);
+
+        // ── AST Context Compression ─────────────────────────────────────────────────
+        // Large TypeScript files are compressed to signature-only representation
+        // before embedding. This keeps token usage per chunk minimal while
+        // preserving 100% of structural/navigational information.
+        let content: string;
+        let compressed = false;
+        if (isTypeScriptFile(file) && lines.length >= AST_COMPRESSION_THRESHOLD) {
+          content = extractTypeScriptSignatures(rawContent, relPath);
+          compressed = true;
+        } else {
+          content = rawContent;
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        const contentLines = content.split('\n');
         let currentChunk = '';
         let chunkIndex = 0;
         let lineCount = 0;
-        
-        for (let i = 0; i < lines.length; i++) {
-          currentChunk += lines[i] + '\n';
+
+        for (let i = 0; i < contentLines.length; i++) {
+          currentChunk += contentLines[i] + '\n';
           lineCount++;
-          
-          if (lineCount >= CHUNK_LINE_LIMIT || i === lines.length - 1) {
-            const relPath = path.relative(workspaceRoot, file);
+
+          if (lineCount >= CHUNK_LINE_LIMIT || i === contentLines.length - 1) {
             chunks.push({
-              id: `${relPath}-${chunkIndex}`,
+              id: `${relPath}-${chunkIndex}${compressed ? '-ast' : ''}`,
               filePath: relPath,
               chunkIndex,
               content: currentChunk.trim()

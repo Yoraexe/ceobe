@@ -8,11 +8,15 @@ Ceobe now utilizes a **Three Brain Pattern** to prevent AI hallucinations and el
 2. **QA Auditor (The Independent Reviewer)**: Strictly reviews the Planner's blueprint for logic gaps and contradictions *before* any code is written.
 3. **Executor (The Programmer)**: Follows the validated blueprint to write the code. Best paired with fast/cheap models (e.g., Gemini 2.5 Flash, GLM, or Llama 3).
 
-## ⚡ Features
-- **Provider Agnostic:** Switch models instantly without touching the code.
-- **Pre-Handoff Self-Correction:** Automatically detects and fixes lint/compilation errors during execution.
-- **Dynamic Skill Routing:** Automatically equips specialized engineering skills (from 34+ available skills) based on your prompt.
-- **Multi-Modal Support:** Pass `.md` files or even UI Mockup Images (`.png`, `.webp`) as your prompt!
+## ⚡ Features (v1.8.0 Enterprise Upgrades)
+- **📱 Telegram Remote Daemon:** Command and monitor your AI orchestration fully from your mobile phone! Includes multi-project session management (`/cd`, `/addproject`) and remote file viewing (`/read`).
+- **🛡️ Interactive Human-In-The-Loop (HITL):** Approve or reject dangerous commands and file deletions directly via Telegram Inline Buttons.
+- **🧩 Dynamic Plugin System:** Inject custom behaviors and tools into the agent by simply dropping `.ts` scripts into `.ceobe/plugins/`. No core modifications needed!
+- **⚡ Multi-Agent Parallel Execution:** The Supervisor intelligently groups independent tasks into "Waves" and executes them concurrently for blazingly fast delivery.
+- **⏪ Git Auto-Snapshot & Rollback:** Automatically creates snapshots before AI execution. If post-execution auto-healing fails after max retries, Ceobe automatically rolls back the codebase to safety.
+- **💰 Live Cost Tracking:** Real-time token usage and API cost monitoring per session (`/cost`).
+- **🌐 Provider Agnostic:** Switch models instantly (Anthropic, Gemini, OpenAI, GLM).
+- **👁️ Multi-Modal Support:** Pass `.md` files or UI Mockup Images (`.png`, `.webp`) as your prompt!
 
 ## 📦 Installation
 
@@ -71,6 +75,23 @@ ceobe mode ask
 # Or bypass temporarily for one run
 ceobe auto "Build a portfolio" --ask
 ```
+
+### 5. Telegram Daemon (Remote Mobile Control)
+Run Ceobe on a server/laptop and control it securely from your phone!
+```bash
+# 1. Setup your keys
+ceobe key set telegram-token <YOUR_BOT_TOKEN>
+ceobe key set telegram-allowed-users <YOUR_TELEGRAM_USER_ID>
+
+# 2. Start the Daemon
+ceobe daemon --telegram
+```
+**In Telegram, simply type:**
+- `/projects` and `/addproject <name> <path>` to manage workspaces.
+- `/cd <name>` to seamlessly switch contexts.
+- Send a prompt: *"Tolong buatkan halaman login..."*
+- Use `/read brd` to fetch the generated design document.
+- Approve/Reject commands directly using Interactive Buttons!
 
 ## 🔍 Utilities
 - `ceobe status` : Check the current phase of the pipeline.

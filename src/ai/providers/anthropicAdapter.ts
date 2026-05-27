@@ -99,6 +99,10 @@ export class AnthropicAdapter implements IProviderAdapter {
         ? 'max_tokens'
         : 'end_turn';
 
-    return { content, stop_reason: stopReason };
+    return { 
+      content, 
+      stop_reason: stopReason,
+      usage: response.usage ? { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens } : undefined
+    };
   }
 }

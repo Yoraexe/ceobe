@@ -1,8 +1,9 @@
 // Tujuan: Mengelola status fase berjalan (state) Ceobe di dalam file .ceobe-state.json.
 // Caller: src/index.ts, src/ai/executor.ts
 // Dependensi: fs, path, env
-// Main Functions: readState, writeState, markPhaseComplete
+// Main Functions: readState, writeState, markPhaseComplete, markFileComplete, markSelfHeal
 // Side Effects: Read/write file system (.ceobe-state.json dan .lock)
+// v1.7.0: Tambahan field selfHealCount untuk melacak siklus self-healing.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,6 +15,8 @@ export interface CeobeState {
   completedPhases: string[];
   completedFiles: string[];
   lastUpdated: string;
+  /** Total self-healing cycles consumed in the current/last execution run. */
+  selfHealCount?: number;
 }
 
 let cachedState: CeobeState | null = null;
@@ -121,4 +124,15 @@ export function markFileComplete(filePath: string): void {
 export function getCompletedFiles(): string[] {
   const currentState = readState();
   return currentState?.completedFiles || [];
+}
+
+/**
+ * Increments the self-healing counter in persistent state.
+ * Called by executor.ts on every autonomous bug-fix cycle.
+ */
+export function markSelfHeal(): number {
+  const currentState = readState();
+  const newCount = (currentState?.selfHealCount ?? 0) + 1;
+  writeState({ selfHealCount: newCount });
+  return newCount;
 }

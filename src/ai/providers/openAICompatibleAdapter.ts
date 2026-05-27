@@ -159,6 +159,10 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
         ? 'max_tokens'
         : 'end_turn';
 
-    return { content, stop_reason: stopReason };
+    return { 
+      content, 
+      stop_reason: stopReason,
+      usage: response.usage ? { input_tokens: response.usage.prompt_tokens, output_tokens: response.usage.completion_tokens } : undefined
+    };
   }
 }

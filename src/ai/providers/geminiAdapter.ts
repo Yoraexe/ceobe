@@ -75,10 +75,22 @@ export class GeminiAdapter implements IProviderAdapter {
     const lastMsg = messages[messages.length - 1];
     const prompt = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
     
-    const text = await this.generate(`${systemInstruction}\n\n${prompt}`);
+    // Extract usage if available from underlying SDK
+    const res = await withRetry(() =>
+      (this.getClient() as { generateContent: (args: unknown) => Promise<unknown> }).generateContent({
+        model: this.modelId,
+        contents: [{ role: 'user', parts: [{ text: `${systemInstruction}\n\n${prompt}` }] }],
+        generationConfig: { temperature: 0 },
+      })
+    ) as any;
+    
+    const text = typeof res.text === 'function' ? res.text() : (res.text || '');
+    const usage = res.usageMetadata ? { input_tokens: res.usageMetadata.promptTokenCount, output_tokens: res.usageMetadata.candidatesTokenCount } : undefined;
+
     return {
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text: text.trim() }],
       stop_reason: 'end_turn',
+      usage
     };
   }
 }

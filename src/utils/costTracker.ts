@@ -1,0 +1,79 @@
+// Module: src/utils/costTracker.ts
+// Tujuan: Melacak penggunaan token API dan menghitung estimasi biaya (USD) per sesi.
+// Caller: src/ai/executor.ts, src/ai/supervisor.ts
+// v1.8.0: Fase 2 - Cost Tracking & Budget Limits
+
+import chalk from 'chalk';
+
+export interface TokenUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+// Harga per 1 Juta Token (USD) per Mei 2026
+const PRICING: Record<string, { input: number; output: number }> = {
+  // Gemini
+  'gemini-2.5-flash': { input: 0.075, output: 0.30 },
+  'gemini-2.5-pro': { input: 1.25, output: 5.00 },
+  'gemini-exp': { input: 0, output: 0 },
+  
+  // Anthropic Claude
+  'claude-3-5-sonnet': { input: 3.00, output: 15.00 },
+  'claude-4-5-sonnet': { input: 3.00, output: 15.00 },
+  'claude-3-haiku': { input: 0.25, output: 1.25 },
+  'claude-3-opus': { input: 15.00, output: 75.00 },
+  
+  // OpenAI
+  'gpt-4o': { input: 2.50, output: 10.00 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  
+  // DeepSeek / GLM (Approximation for open-weights / chinese models)
+  'glm-5.1-flash': { input: 0.05, output: 0.05 },
+  'deepseek-chat': { input: 0.14, output: 0.28 },
+  'deepseek-coder': { input: 0.14, output: 0.28 }
+};
+
+let sessionUsage: TokenUsage[] = [];
+
+export function resetSession(): void {
+  sessionUsage = [];
+}
+
+export function recordUsage(usage: TokenUsage): void {
+  sessionUsage.push(usage);
+}
+
+export function getSessionCost(): number {
+  let totalCost = 0;
+  for (const usage of sessionUsage) {
+    // Find closest matching pricing tier based on model name substring
+    const modelKey = Object.keys(PRICING).find(k => usage.model.toLowerCase().includes(k));
+    const rates = modelKey ? PRICING[modelKey] : { input: 0, output: 0 };
+    
+    const inputCost = (usage.inputTokens / 1_000_000) * rates.input;
+    const outputCost = (usage.outputTokens / 1_000_000) * rates.output;
+    totalCost += inputCost + outputCost;
+  }
+  return totalCost;
+}
+
+export function checkBudget(maxUsd: number): void {
+  if (maxUsd <= 0) return; // 0 means no limit
+  const currentCost = getSessionCost();
+  if (currentCost > maxUsd) {
+    throw new Error(`BUDGET_EXCEEDED: Eksekusi dihentikan. Biaya saat ini ($${currentCost.toFixed(4)}) melebihi batas anggaran ($${maxUsd.toFixed(4)}).`);
+  }
+}
+
+export function getCostSummary(): string {
+  const totalCost = getSessionCost();
+  const totalInput = sessionUsage.reduce((sum, u) => sum + u.inputTokens, 0);
+  const totalOutput = sessionUsage.reduce((sum, u) => sum + u.outputTokens, 0);
+  return `Token: ${totalInput.toLocaleString()} IN, ${totalOutput.toLocaleString()} OUT | Estimasi Biaya: $${totalCost.toFixed(4)}`;
+}
+
+export function printCostSummary(): void {
+  console.log(chalk.cyan(`\n📊 Laporan Penggunaan API:`));
+  console.log(chalk.cyan(`  ${getCostSummary()}`));
+}

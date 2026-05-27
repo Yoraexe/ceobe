@@ -5,6 +5,7 @@
 // Caller: src/config/env.ts, src/index.ts
 // Dependencies: fs, path, os, readline, chalk
 // Side Effects: Read/write ~/.ceobe/keys.json
+// v1.7.0: Tambahan key Telegram (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS).
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -93,7 +94,10 @@ export function getRequiredKeyForActiveProviders(): string[] {
     together: 'TOGETHER_API_KEY',
     qwen: 'QWEN_API_KEY',
     openai: 'OPENAI_API_KEY',
-    ollama: '', // No key needed for local
+    ollama: '',
+    TELEGRAM_BOT_TOKEN: 'TELEGRAM_BOT_TOKEN',
+    TELEGRAM_ALLOWED_USERS: 'TELEGRAM_ALLOWED_USERS',
+    CEOBE_MAX_BUDGET: 'CEOBE_MAX_BUDGET',
   };
 
   const required = new Set<string>();
@@ -183,6 +187,21 @@ export const KEY_DEFINITIONS: KeyDefinition[] = [
     required: false,
     docsUrl: 'https://dash.cloudflare.com',
   },
+  // ── Telegram Daemon (v1.7.0) ────────────────────────────────────
+  {
+    envKey: 'TELEGRAM_BOT_TOKEN',
+    provider: 'telegram-token',
+    label: 'Telegram Bot Token (untuk ceobe daemon)',
+    required: false,
+    docsUrl: 'https://t.me/BotFather',
+  },
+  {
+    envKey: 'TELEGRAM_ALLOWED_USERS',
+    provider: 'telegram-allowed-users',
+    label: 'Telegram Allowed User IDs (pisah koma, misal: 123456,789012)',
+    required: false,
+    docsUrl: 'https://t.me/userinfobot',
+  },
   // ── Provider Selection (non-secret config stored same way for convenience)
   {
     envKey: 'CEOBE_PLANNER_PROVIDER',
@@ -239,6 +258,13 @@ export const KEY_DEFINITIONS: KeyDefinition[] = [
     label: 'Embedding Model Override (opsional)',
     required: false,
     docsUrl: 'https://github.com/your-repo/ceobe#providers',
+  },
+  {
+    envKey: 'CEOBE_MAX_BUDGET',
+    provider: 'max-budget',
+    label: 'Budget Limit USD (0 untuk tanpa limit)',
+    required: false,
+    docsUrl: '',
   },
 ];
 

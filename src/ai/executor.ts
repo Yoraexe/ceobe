@@ -2,9 +2,12 @@
 // Purpose: Execution Engine. Runs the agent loop using any configured AI provider.
 //          Provider selection is handled by createExecutorAdapter() - not here.
 //          When mode=ask, destructive tool calls pause and require user confirmation.
+//          v1.7.0: Self-Healing — when execute_command fails, the executor injects a
+//          "FIX THIS ERROR" directive and retries autonomously up to MAX_SELF_HEAL times.
 // Caller: src/index.ts, src/ai/supervisor.ts
 // Dependencies: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path
 // Side Effects: Sends HTTP requests to the configured AI provider, calls system tools (I/O).
+// Main Functions: executePlan, trimMessages
 
 import { createExecutorAdapter } from './providers/router';
 import type { NormalizedMessage, NormalizedContentBlock, NormalizedTool } from './providers/types';
@@ -14,11 +17,26 @@ import { tools as rawTools, handleToolCall } from './tools/systemTools';
 import * as fs from 'fs';
 import * as path from 'path';
 import { env } from '../config/env';
-import { markFileComplete } from '../utils/stateManager';
+import { markFileComplete, markSelfHeal } from '../utils/stateManager';
 import { getActiveMode, SENSITIVE_TOOLS, confirmToolCall } from '../utils/modeManager';
+import { recordUsage, checkBudget } from '../utils/costTracker';
+import { loadDynamicTools } from './plugins/pluginLoader';
 
 // Cast Ceobe's internal tool format to the normalized type
 const tools = rawTools as unknown as NormalizedTool[];
+
+// ── Self-Healing constants ────────────────────────────────────────────────────
+/** Maximum number of autonomous bug-fix cycles before giving up. */
+const MAX_SELF_HEAL = 3;
+
+/**
+ * Returns true when an execute_command tool result signals a failure.
+ * Matches the format returned by systemTools.ts execute_command handler.
+ */
+function isCommandFailure(result: unknown): boolean {
+  if (typeof result !== 'string') return false;
+  return result.trimStart().startsWith('Command failed:');
+}
 
 /**
  * Safely trims the message history to avoid exceeding context window limits,
@@ -64,6 +82,9 @@ export async function executePlan(
   const adapter = createExecutorAdapter();
   const spinner = ora(`${adapter.name.toUpperCase()} (${adapter.modelId}) is executing the plan...`).start();
 
+  /** Tracks how many self-healing cycles have been used in this executePlan call. */
+  let selfHealCount = 0;
+
   try {
     const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
     if (!fs.existsSync(path.dirname(logPath))) {
@@ -73,6 +94,9 @@ export async function executePlan(
     const logExecution = (text: string): void => {
       fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${text}\n`, 'utf8');
     };
+
+    const dynamicTools = await loadDynamicTools(env.TARGET_PROJECT_DIR);
+    const finalTools = [...tools, ...dynamicTools];
 
     logExecution(`--- STARTED EXECUTION (provider: ${adapter.name}, model: ${adapter.modelId}) ---`);
 
@@ -109,7 +133,16 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
       messages = trimMessages(messages, 25);
 
-      const response = await adapter.chat(messages, tools, systemInstruction);
+      const response = await adapter.chat(messages, finalTools, systemInstruction);
+
+      // Record usage for budget tracking
+      if (response.usage) {
+        recordUsage({
+          model: adapter.modelId,
+          inputTokens: response.usage.input_tokens || 0,
+          outputTokens: response.usage.output_tokens || 0,
+        });
+      }
 
       // Surface the model's text reasoning in the spinner
       const textBlock = response.content.find((c) => c.type === 'text');
@@ -230,6 +263,39 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
           const resultStr = typeof resultBlocks === 'string' ? resultBlocks : JSON.stringify(resultBlocks);
 
+          // ── SELF-HEALING GATE ───────────────────────────────────────────────
+          // When execute_command returns a failure, annotate the result so the
+          // LLM understands it MUST fix the code — not just acknowledge the error.
+          if (block.name === 'execute_command' && isCommandFailure(resultStr)) {
+            selfHealCount++;
+            markSelfHeal(); // Persist cycle count to .ceobe/ceobe-state.json
+            spinner.warn(
+              chalk.yellow(`[Self-Heal ${selfHealCount}/${MAX_SELF_HEAL}] Command failed. Requesting AI bug-fix...`)
+            );
+            spinner.start();
+            logExecution(`SELF_HEAL[${selfHealCount}/${MAX_SELF_HEAL}]: Command failure detected in tool '${block.name}'.`);
+
+            if (selfHealCount > MAX_SELF_HEAL) {
+              throw new Error(
+                `[Self-Heal] Maximum autonomous repair cycles (${MAX_SELF_HEAL}) exceeded.\n` +
+                `Last failure output:\n${resultStr.substring(0, 1000)}`
+              );
+            }
+
+            // Augment the tool result with a mandatory fix directive.
+            const healDirective =
+              `\n\n⚠️  [SELF-HEAL DIRECTIVE — Cycle ${selfHealCount}/${MAX_SELF_HEAL}]\n` +
+              `The command above FAILED. You MUST:\n` +
+              `1. Read the error output carefully.\n` +
+              `2. Identify the root cause (syntax error, missing import, wrong path, etc.).\n` +
+              `3. Fix the offending file(s) using write_file or edit_file.\n` +
+              `4. Re-run the failed command to verify the fix.\n` +
+              `DO NOT skip this. DO NOT proceed to the next task until this command succeeds.`;
+
+            resultBlocks = resultStr + healDirective;
+          }
+          // ───────────────────────────────────────────────────────────────────
+
           logExecution(
             `TOOL_RESULT: ${resultStr.substring(0, 200)}${resultStr.length > 200 ? '...' : ''}`
           );
@@ -251,6 +317,9 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
         messages.push({ role: 'user', content: toolResultBlocks });
       }
+      
+      // Enforce Budget Limit (if set)
+      checkBudget(env.CEOBE_MAX_BUDGET);
     }
 
     logExecution('--- FINISHED EXECUTION ---\n');
