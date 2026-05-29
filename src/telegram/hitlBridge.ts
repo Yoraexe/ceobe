@@ -1,8 +1,8 @@
-// Module: src/telegram/hitlBridge.ts
-// Tujuan: Meneruskan permintaan konfirmasi (Human-in-the-Loop) dari executor ke Telegram
-//         menggunakan tombol interaktif (Inline Keyboard).
+// Tujuan: Meneruskan permintaan konfirmasi (Human-in-the-Loop) dari executor ke Telegram menggunakan tombol interaktif (Inline Keyboard).
 // Caller: src/telegram/telegramDaemon.ts
-// Dependensi: node-telegram-bot-api, modeManager
+// Dependensi: node-telegram-bot-api, modeManager, crypto
+// Main Functions: TelegramHITLBridge
+// Side Effects: Mengirim pesan Telegram, mendengarkan callback query, mengedit markup pesan Telegram
 // v1.8.0: Fase 1 - Telegram HITL Interaktif
 
 import TelegramBot from 'node-telegram-bot-api';
@@ -45,12 +45,12 @@ export class TelegramHITLBridge implements ConfirmationBridge {
 
       const messageText = `⚠️ *KONFIRMASI DIPERLUKAN*\n\nCeobe akan melakukan aksi berikut:\n\`\`\`\n${summary}\n\`\`\`\n\n_Pilih aksi dalam ${this.timeoutMs / 1000} detik:_`;
 
-      let timeoutHandle: NodeJS.Timeout;
+      let timeoutHandle: NodeJS.Timeout | undefined;
       let listener: (query: TelegramBot.CallbackQuery) => void;
       let sentMessageId: number | undefined;
 
       const cleanup = () => {
-        clearTimeout(timeoutHandle);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
         this.bot.removeListener('callback_query', listener);
         // Hapus tombol setelah dijawab/timeout
         if (sentMessageId) {
@@ -61,46 +61,46 @@ export class TelegramHITLBridge implements ConfirmationBridge {
       // 1. Kirim pesan ke Telegram
       this.bot.sendMessage(this.chatId, messageText, options).then((msg) => {
         sentMessageId = msg.message_id;
+        
+        // 2. Set timeout (auto abort jika tidak ada respons)
+        timeoutHandle = setTimeout(() => {
+          cleanup();
+          reject(new Error('TIMEOUT: Tidak ada respons konfirmasi dari Telegram selama 120 detik. Sesi dibatalkan demi keamanan.'));
+        }, this.timeoutMs);
+
+        // 3. Dengarkan jawaban tombol
+        listener = (query: TelegramBot.CallbackQuery) => {
+          if (!query.data || query.message?.chat.id !== this.chatId) return;
+
+          if (query.data === cbYes || query.data === cbNo || query.data === cbAbort) {
+            cleanup();
+            
+            let responseText = '';
+            if (query.data === cbYes) responseText = '✅ Aksi diizinkan.';
+            if (query.data === cbNo) responseText = '⏭️ Aksi dilewati.';
+            if (query.data === cbAbort) responseText = '🛑 Pipeline dibatalkan.';
+
+            // Beri feedback ke user di Telegram
+            this.bot.answerCallbackQuery(query.id, { text: responseText });
+            
+            if (sentMessageId) {
+               this.bot.editMessageText(`⚠️ *KONFIRMASI SELESAI*\n\nAksi:\n\`\`\`\n${summary}\n\`\`\`\n\nKeputusan: ${responseText}`, {
+                 chat_id: this.chatId,
+                 message_id: sentMessageId,
+                 parse_mode: 'Markdown'
+               }).catch(() => {});
+            }
+
+            if (query.data === cbYes) resolve(true);
+            else if (query.data === cbNo) resolve(false);
+            else reject(new Error('USER_ABORT: Sesi dihentikan oleh pengguna via Telegram.'));
+          }
+        };
+
+        this.bot.on('callback_query', listener);
       }).catch((err) => {
         reject(new Error(`Gagal mengirim konfirmasi HITL ke Telegram: ${err.message}`));
       });
-
-      // 2. Set timeout (auto abort jika tidak ada respons)
-      timeoutHandle = setTimeout(() => {
-        cleanup();
-        reject(new Error('TIMEOUT: Tidak ada respons konfirmasi dari Telegram selama 120 detik. Sesi dibatalkan demi keamanan.'));
-      }, this.timeoutMs);
-
-      // 3. Dengarkan jawaban tombol
-      listener = (query: TelegramBot.CallbackQuery) => {
-        if (!query.data || query.message?.chat.id !== this.chatId) return;
-
-        if (query.data === cbYes || query.data === cbNo || query.data === cbAbort) {
-          cleanup();
-          
-          let responseText = '';
-          if (query.data === cbYes) responseText = '✅ Aksi diizinkan.';
-          if (query.data === cbNo) responseText = '⏭️ Aksi dilewati.';
-          if (query.data === cbAbort) responseText = '🛑 Pipeline dibatalkan.';
-
-          // Beri feedback ke user di Telegram
-          this.bot.answerCallbackQuery(query.id, { text: responseText });
-          
-          if (sentMessageId) {
-             this.bot.editMessageText(`⚠️ *KONFIRMASI SELESAI*\n\nAksi:\n\`\`\`\n${summary}\n\`\`\`\n\nKeputusan: ${responseText}`, {
-               chat_id: this.chatId,
-               message_id: sentMessageId,
-               parse_mode: 'Markdown'
-             }).catch(() => {});
-          }
-
-          if (query.data === cbYes) resolve(true);
-          else if (query.data === cbNo) resolve(false);
-          else reject(new Error('USER_ABORT: Sesi dihentikan oleh pengguna via Telegram.'));
-        }
-      };
-
-      this.bot.on('callback_query', listener);
     });
   }
 }

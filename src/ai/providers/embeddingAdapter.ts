@@ -70,7 +70,6 @@ class OpenAICompatibleEmbeddingAdapter implements IEmbeddingAdapter {
   }
 
   async getEmbedding(text: string): Promise<number[]> {
-    const { withRetry } = await import('../../utils/retry');
     const client = await this.getClient() as import('openai').default;
     const response = await withRetry(() =>
       client.embeddings.create({

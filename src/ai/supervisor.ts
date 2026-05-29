@@ -10,8 +10,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
 import * as readline from 'readline';
-import { env } from '../config/env';
-import { selectRelevantSkills, generateBRD, generateDesignSpec, generateArchitecture, generateImplementationPlan, generateDevOpsConfig, auditPlan } from './planner';
+import { getProjectDir, log } from '../utils/context';
+import { selectRelevantSkills, generateBRD, generateDesignSpec, generateArchitecture, generateImplementationPlan, generateDevOpsConfig, auditPlan, AuditResult } from './planner';
 import { executePlan } from './executor';
 import { markPhaseComplete, readState, getCompletedFiles } from '../utils/stateManager';
 import { indexWorkspace } from './memory/indexer';
@@ -43,9 +43,9 @@ function askUserConfirmation(question: string): Promise<boolean> {
 
 export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
   resetSession();
-  console.log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
+  log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
   
-  const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+  const ceobeDir = path.join(getProjectDir(), '.ceobe');
   if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
   const prefix = isFeature ? 'feature-' : '';
@@ -56,16 +56,16 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
   const devopsPath = path.join(ceobeDir, `${prefix}devops.md`);
 
   try {
-    const currentState = readState();
+    const currentState = await readState();
     let startingPhase = 'plan';
     
     if (currentState && currentState.currentPhase !== 'done' && !isFeature) {
-      console.log(chalk.yellow(`\n[Supervisor] Found incomplete run. Phase: ${currentState.currentPhase}`));
+      log(chalk.yellow(`\n[Supervisor] Found incomplete run. Phase: ${currentState.currentPhase}`));
       const proceed = await askUserConfirmation('Do you want to resume this run?');
       if (proceed) {
         startingPhase = currentState.currentPhase;
       } else {
-        console.log(chalk.yellow('Starting a fresh run instead...'));
+        log(chalk.yellow('Starting a fresh run instead...'));
         // We could delete state, but proceeding with 'plan' will overwrite it.
       }
     }
@@ -75,6 +75,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
     let isAuditPassed = false;
     let retryCount = 0;
     let feedback: string | undefined = undefined;
+    let affectedMap: AuditResult['affected'] | undefined = undefined;
 
     let brd = '';
     let design = '';
@@ -92,58 +93,84 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
     }
 
     if (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit') {
+      let regenBRD = true;
+      let regenDesign = true;
+      let regenArch = true;
+      let regenDevops = true;
+      let regenTask = true;
+
       while (!isAuditPassed && retryCount <= MAX_RETRIES) {
         if (retryCount > 0) {
-          console.log(chalk.yellow(`\n[Supervisor] Auto-Correction Cycle ${retryCount}/${MAX_RETRIES}...`));
+          log(chalk.yellow(`\n[Supervisor] Auto-Correction Cycle ${retryCount}/${MAX_RETRIES}...`));
+          if (affectedMap) {
+             regenBRD = affectedMap.brd ?? false;
+             regenDesign = affectedMap.design ?? false;
+             regenArch = affectedMap.arch ?? false;
+             regenDevops = affectedMap.devops ?? false;
+             regenTask = affectedMap.task ?? false;
+             log(chalk.dim(`[Supervisor] Selective Regeneration: BRD(${regenBRD}) Design(${regenDesign}) Arch(${regenArch}) DevOps(${regenDevops}) Task(${regenTask})`));
+          }
         }
 
         // Step 1: Generate Plans
-        brd = await generateBRD(description, selectedSkills, feedback);
-        fs.writeFileSync(brdPath, brd);
-        markPhaseComplete(isFeature ? 'build-feature' : 'plan', 'design');
+        if (regenBRD) {
+          brd = await generateBRD(description, selectedSkills, feedback);
+          fs.writeFileSync(brdPath, brd);
+        }
+        await markPhaseComplete(isFeature ? 'build-feature' : 'plan', 'design');
 
-        design = await generateDesignSpec(brd, selectedSkills, feedback);
-        fs.writeFileSync(designPath, design);
-        markPhaseComplete('design', 'audit');
+        if (regenDesign) {
+          design = await generateDesignSpec(brd, selectedSkills, feedback);
+          fs.writeFileSync(designPath, design);
+        }
+        await markPhaseComplete('design', 'audit');
 
-        arch = await generateArchitecture(brd, design, selectedSkills, feedback);
-        fs.writeFileSync(archPath, arch);
+        if (regenArch) {
+          arch = await generateArchitecture(brd, design, selectedSkills, feedback);
+          fs.writeFileSync(archPath, arch);
+        }
 
         // Generate DevOps Config BEFORE execution so Claude can build the infrastructure
-        devops = await generateDevOpsConfig(arch, '', selectedSkills, feedback);
-        fs.writeFileSync(devopsPath, devops);
+        if (regenDevops) {
+          devops = await generateDevOpsConfig(arch, '', selectedSkills, feedback);
+          fs.writeFileSync(devopsPath, devops);
+        }
 
-        task = await generateImplementationPlan(arch, selectedSkills, feedback);
-        fs.writeFileSync(taskPath, task);
+        if (regenTask) {
+          task = await generateImplementationPlan(arch, selectedSkills, feedback);
+          fs.writeFileSync(taskPath, task);
+        }
 
         // Step 2: Audit
-        console.log(chalk.blue(`\n[Supervisor] Submitting plans to Quality Assurance Auditor...`));
+        log(chalk.blue(`\n[Supervisor] Submitting plans to Quality Assurance Auditor...`));
         const combinedContent = `\n--- BRD ---\n${brd}\n--- DESIGN ---\n${design}\n--- ARCHITECTURE ---\n${arch}\n--- DEVOPS ---\n${devops}\n--- TASK PLAN ---\n${task}\n`;
         
         const auditResult = await auditPlan(combinedContent, selectedSkills);
         
         if (auditResult.passed) {
           isAuditPassed = true;
-          markPhaseComplete('audit', 'execute');
+          await markPhaseComplete('audit', 'execute');
         } else {
-          feedback = auditResult.feedback;
+          // Strip the JSON block to prevent cross-model prompt injection
+          feedback = auditResult.feedback?.replace(/```json\s*\{[\s\S]*?\}\s*```/, '').trim();
+          affectedMap = auditResult.affected;
           retryCount++;
         }
       }
 
       if (!isAuditPassed) {
-        console.error(chalk.red(`\n[Supervisor Error] Maximum auto-correction retries (${MAX_RETRIES}) reached. Audit still failing.`));
-        console.log(chalk.yellow('Supervisor is handing back control to you. Please manually fix the plans in .ceobe/ and run `ceobe audit`.'));
+        log(chalk.red(`\n[Supervisor Error] Maximum auto-correction retries (${MAX_RETRIES}) reached. Audit still failing.`));
+        log(chalk.yellow('Supervisor is handing back control to you. Please manually fix the plans in .ceobe/ and run `ceobe audit`.'));
         return;
       }
 
-      console.log(chalk.green(`\n✅ [Supervisor] Audit Passed! Architecture & Design are sound.`));
+      log(chalk.green(`\n✅ [Supervisor] Audit Passed! Architecture & Design are sound.`));
 
       // Step 3: Human-in-the-Loop Gate
       if (askBeforeExecute) {
         const proceed = await askUserConfirmation(`\nThe plans have been finalized and approved. Ready to modify your workspace. Proceed?`);
         if (!proceed) {
-          console.log(chalk.yellow(`\n[Supervisor] Execution aborted by user. The plans remain in .ceobe/. Run 'ceobe execute' when ready.\n`));
+          log(chalk.yellow(`\n[Supervisor] Execution aborted by user. The plans remain in .ceobe/. Run 'ceobe execute' when ready.\n`));
           return;
         }
       }
@@ -151,11 +178,11 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
 
     // Auto-index before execution
     if (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit' || startingPhase === 'execute') {
-       console.log(chalk.blue(`\n[Supervisor] Indexing workspace for RAG semantic memory...`));
+       log(chalk.blue(`\n[Supervisor] Indexing workspace for RAG semantic memory...`));
        try {
           await indexWorkspace();
        } catch (err) {
-          console.log(chalk.yellow(`[Warning] Indexing failed or skipped. Semantic search may be degraded.`));
+          log(chalk.yellow(`[Warning] Indexing failed or skipped. Semantic search may be degraded.`));
        }
     }
 
@@ -166,22 +193,22 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
       let execFeedback = '';
 
       // ── Git Snapshot ─────────────────────────────────────────────────────────
-      console.log(chalk.blue(`\n[GitManager] Membuat snapshot sebelum eksekusi AI...`));
+      log(chalk.blue(`\n[GitManager] Membuat snapshot sebelum eksekusi AI...`));
       const snapshotHash = await createSnapshot();
       // ─────────────────────────────────────────────────────────────────────────
 
       while (!isCodeValid && executionRetry <= MAX_RETRIES) {
         if (executionRetry > 0) {
-          console.log(chalk.yellow(`\n[Supervisor] Code Correction Cycle ${executionRetry}/${MAX_RETRIES}...`));
+          log(chalk.yellow(`\n[Supervisor] Code Correction Cycle ${executionRetry}/${MAX_RETRIES}...`));
         }
 
-        console.log(chalk.magenta(`\n[Supervisor] Transitioning to Execution Engine...\n`));
+        log(chalk.magenta(`\n[Supervisor] Transitioning to Execution Engine...\n`));
         
         // Append DevOps specs to the task plan so Claude implements them
         let finalTask = `${task}\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\n${devops}`;
         
         // Inject completed files context if resuming
-        const completedFiles = getCompletedFiles();
+        const completedFiles = await getCompletedFiles();
         if (completedFiles.length > 0) {
            finalTask += `\n\n[ALREADY COMPLETED FILES]\nThe following files were ALREADY created in a previous run. DO NOT recreate them unless you need to fix an error. Just skip to the uncompleted items:\n${completedFiles.map(f => `- ${f}`).join('\n')}`;
         }
@@ -195,13 +222,13 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
         const totalTasks = waves.reduce((sum, w) => sum + w.tasks.length, 0);
 
         if (waves.length > 1) {
-          console.log(chalk.cyan(`\n[Parallel Executor] Plan dipecah menjadi ${waves.length} gelombang eksekusi.`));
-          console.log(chalk.dim(`  Total task: ${totalTasks} | Paralel per gelombang: max ${Math.max(...waves.map(w => w.tasks.length))}\n`));
+          log(chalk.cyan(`\n[Parallel Executor] Plan dipecah menjadi ${waves.length} gelombang eksekusi.`));
+          log(chalk.dim(`  Total task: ${totalTasks} | Paralel per gelombang: max ${Math.max(...waves.map(w => w.tasks.length))}\n`));
         }
 
         for (const wave of waves) {
           if (wave.tasks.length > 1) {
-            console.log(chalk.magenta(`\n[Parallel Executor] Gelombang ${wave.wave} — ${wave.tasks.length} task berjalan paralel...`));
+            log(chalk.magenta(`\n[Parallel Executor] Gelombang ${wave.wave} — ${wave.tasks.length} task berjalan paralel...`));
             // Execute all tasks in this wave concurrently
             const waveResults = await Promise.allSettled(
               wave.tasks.map(waveTask =>
@@ -212,74 +239,75 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
                 )
               )
             );
-            // Surface any failures but continue to next wave
+            // Abort pipeline if a wave fails
             const failures = waveResults.filter(r => r.status === 'rejected');
             if (failures.length > 0) {
               failures.forEach(f => {
                 const msg = f.status === 'rejected' ? String(f.reason) : '';
-                console.log(chalk.yellow(`  [Wave ${wave.wave}] Task gagal: ${msg.substring(0, 120)}`));
+                log(chalk.red(`  [Wave ${wave.wave}] Task gagal: ${msg.substring(0, 120)}`));
               });
+              throw new Error(`Wave ${wave.wave} execution failed. Aborting pipeline.`);
             } else {
-              console.log(chalk.green(`  [Wave ${wave.wave}] Semua task selesai.`));
+              log(chalk.green(`  [Wave ${wave.wave}] Semua task selesai.`));
             }
           } else {
             // Single task in wave — run sequentially as before
-            console.log(chalk.blue(`\n[Parallel Executor] Gelombang ${wave.wave} — 1 task (sequential).`));
+            log(chalk.blue(`\n[Parallel Executor] Gelombang ${wave.wave} — 1 task (sequential).`));
             await executePlan(wave.tasks[0].content, arch, design);
           }
         }
         // ───────────────────────────────────────────────────────────────────────
-        markPhaseComplete('execute', 'verify');
+        await markPhaseComplete('execute', 'verify');
 
-        console.log(chalk.blue(`\n[Supervisor] Running Post-Execution Verification (Quality Layer)...`));
+        log(chalk.blue(`\n[Supervisor] Running Post-Execution Verification (Quality Layer)...`));
         
         try {
           // Check TypeScript compilation
-          const hasTsconfig = fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'tsconfig.json'));
+          const hasTsconfig = fs.existsSync(path.join(getProjectDir(), 'tsconfig.json'));
           if (hasTsconfig) {
-            console.log(chalk.gray(`Running: npx tsc --noEmit`));
-            await execAsync('npx tsc --noEmit', { cwd: env.TARGET_PROJECT_DIR });
+            log(chalk.gray(`Running: npx tsc --noEmit`));
+            await execAsync('npx tsc --noEmit', { cwd: getProjectDir(), timeout: 120000 });
           }
 
           // Check Tests if vitest/jest is available in package.json
-          const pkgJsonPath = path.join(env.TARGET_PROJECT_DIR, 'package.json');
+          const pkgJsonPath = path.join(getProjectDir(), 'package.json');
           if (fs.existsSync(pkgJsonPath)) {
              const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
              if (pkgJson.devDependencies?.vitest || pkgJson.dependencies?.vitest) {
-                console.log(chalk.gray(`Running: npx vitest run --passWithNoTests`));
-                await execAsync('npx vitest run --passWithNoTests', { cwd: env.TARGET_PROJECT_DIR });
+                log(chalk.gray(`Running: npx vitest run --passWithNoTests`));
+                await execAsync('npx vitest run --passWithNoTests', { cwd: getProjectDir(), timeout: 120000 });
              }
           }
           
           // Polyglot: Go
-          if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'go.mod'))) {
-             console.log(chalk.gray(`Running: go build ./...`));
-             await execAsync('go build ./...', { cwd: env.TARGET_PROJECT_DIR });
-             console.log(chalk.gray(`Running: go test ./...`));
-             await execAsync('go test ./...', { cwd: env.TARGET_PROJECT_DIR });
+          if (fs.existsSync(path.join(getProjectDir(), 'go.mod'))) {
+             log(chalk.gray(`Running: go build ./...`));
+             await execAsync('go build ./...', { cwd: getProjectDir(), timeout: 120000 });
+             log(chalk.gray(`Running: go test ./...`));
+             await execAsync('go test ./...', { cwd: getProjectDir(), timeout: 120000 });
           }
           
           // Polyglot: Rust
-          if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'Cargo.toml'))) {
-             console.log(chalk.gray(`Running: cargo check`));
-             await execAsync('cargo check', { cwd: env.TARGET_PROJECT_DIR });
-             console.log(chalk.gray(`Running: cargo test`));
-             await execAsync('cargo test', { cwd: env.TARGET_PROJECT_DIR });
+          if (fs.existsSync(path.join(getProjectDir(), 'Cargo.toml'))) {
+             log(chalk.gray(`Running: cargo check`));
+             await execAsync('cargo check', { cwd: getProjectDir(), timeout: 120000 });
+             log(chalk.gray(`Running: cargo test`));
+             await execAsync('cargo test', { cwd: getProjectDir(), timeout: 120000 });
           }
           
           // Polyglot: PHP/Laravel
-          if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'composer.json'))) {
+          if (fs.existsSync(path.join(getProjectDir(), 'composer.json'))) {
              try {
-                console.log(chalk.gray(`Running: composer validate`));
-                await execAsync('composer validate --no-check-all', { cwd: env.TARGET_PROJECT_DIR });
+                log(chalk.gray(`Running: composer validate`));
+                await execAsync('composer validate --no-check-all', { cwd: getProjectDir(), timeout: 120000 });
              } catch (error: unknown) {
                 // Ignore if composer not installed globally
              }
              
-             if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'artisan'))) {
-                console.log(chalk.gray(`Running: php artisan about`));
+             if (fs.existsSync(path.join(getProjectDir(), 'artisan'))) {
+                log(chalk.gray(`Running: php artisan about`));
                 try {
-                   await execAsync('php artisan about', { cwd: env.TARGET_PROJECT_DIR });
+                   await execAsync('php artisan about', { cwd: getProjectDir(), timeout: 120000 });
                 } catch (error: unknown) {
                    const msg = error instanceof Error ? error.message : String(error);
                    if (!msg.includes('not recognized') && !msg.includes('not found')) {
@@ -290,44 +318,44 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
           }
           
           // Polyglot: Python
-          if (fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'requirements.txt')) || fs.existsSync(path.join(env.TARGET_PROJECT_DIR, 'pyproject.toml'))) {
-             console.log(chalk.gray(`Running: python -m compileall .`));
-             await execAsync('python -m compileall .', { cwd: env.TARGET_PROJECT_DIR });
+          if (fs.existsSync(path.join(getProjectDir(), 'requirements.txt')) || fs.existsSync(path.join(getProjectDir(), 'pyproject.toml'))) {
+             log(chalk.gray(`Running: python -m compileall .`));
+             await execAsync('python -m compileall .', { cwd: getProjectDir(), timeout: 120000 });
              // Attempt pytest if exists, but don't fail if command not found
              try {
-                console.log(chalk.gray(`Running: pytest (if available)`));
-                await execAsync('pytest', { cwd: env.TARGET_PROJECT_DIR });
+                log(chalk.gray(`Running: pytest (if available)`));
+                await execAsync('pytest', { cwd: getProjectDir(), timeout: 120000 });
              } catch (pytestErr: unknown) {
                 // Only fail if pytest actually ran and tests failed. If command not found, ignore.
-                const err = pytestErr as any;
-                const msg = err instanceof Error ? err.message : String(err);
-                if (err.stdout && !msg.includes('not recognized') && !msg.includes('not found')) {
+                const msg = pytestErr instanceof Error ? pytestErr.message : String(pytestErr);
+                if ((pytestErr as { stdout?: string }).stdout && !msg.includes('not recognized') && !msg.includes('not found')) {
                    throw pytestErr;
                 }
              }
           }
 
           isCodeValid = true;
-          console.log(chalk.green(`\n✅ [Supervisor] Code Verification Passed! No compilation or test errors.`));
-          markPhaseComplete('verify', 'devops');
+          log(chalk.green(`\n✅ [Supervisor] Code Verification Passed! No compilation or test errors.`));
+          await markPhaseComplete('verify', 'devops');
         } catch (verifyError: unknown) {
-          console.log(chalk.red(`\n❌ [Supervisor] Verification Failed.`));
-          const err = verifyError as any;
-          execFeedback = `Verification failed with output:\n${err.stdout || ''}\n${err.stderr || ''}`;
-          console.log(chalk.yellow(execFeedback));
+          log(chalk.red(`\n❌ [Supervisor] Verification Failed.`));
+          const stdout = (verifyError as { stdout?: string }).stdout || '';
+          const stderr = (verifyError as { stderr?: string }).stderr || '';
+          execFeedback = `Verification failed with output:\n${stdout}\n${stderr}`;
+          log(chalk.yellow(execFeedback));
           executionRetry++;
         }
       }
 
       if (!isCodeValid) {
-        console.error(chalk.red(`\n[Supervisor Error] Maximum code correction retries (${MAX_RETRIES}) reached. Verification still failing.`));
+        log(chalk.red(`\n[Supervisor Error] Maximum code correction retries (${MAX_RETRIES}) reached. Verification still failing.`));
 
         // ── Auto Rollback ───────────────────────────────────────────────────────
         if (snapshotHash) {
-          console.log(chalk.yellow('\n[GitManager] Pipeline gagal melampaui batas retry. Memulai auto-rollback...'));
+          log(chalk.yellow('\n[GitManager] Pipeline gagal melampaui batas retry. Memulai auto-rollback...'));
           await rollbackToSnapshot(snapshotHash);
         } else {
-          console.log(chalk.yellow('[GitManager] Tidak ada snapshot tersedia. Rollback dilewati.'));
+          log(chalk.yellow('[GitManager] Tidak ada snapshot tersedia. Rollback dilewati.'));
         }
         // ───────────────────────────────────────────────────────────────────────
 
@@ -336,26 +364,26 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
     }
 
     // Phase 5 is now merged into execution, but we mark done
-    markPhaseComplete('devops', 'done');
+    await markPhaseComplete('devops', 'done');
 
     // ── Self-Heal Summary Report ───────────────────────────────────────────────
-    const finalState = readState();
+    const finalState = await readState();
     const healCount = finalState?.selfHealCount ?? 0;
     if (healCount > 0) {
-      console.log(chalk.cyan(`\n🩹 [Self-Heal] ${healCount} bug(s) ditemukan dan diperbaiki secara otomatis oleh AI.`));
+      log(chalk.cyan(`\n🩹 [Self-Heal] ${healCount} bug(s) ditemukan dan diperbaiki secara otomatis oleh AI.`));
     }
     // ──────────────────────────────────────────────────────────────────────────
 
     printCostSummary();
-    console.log(chalk.green.bold(`\n🎉 [Supervisor Agent] Autonomous Workflow Complete! Mission Accomplished.\n`));
+    log(chalk.green.bold(`\n🎉 [Supervisor Agent] Autonomous Workflow Complete! Mission Accomplished.\n`));
 
   } catch (err: unknown) {
-    console.error(chalk.red('\n[Supervisor Error] Autonomous loop crashed.'));
-    console.error(err);
+    log(chalk.red('\n[Supervisor Error] Autonomous loop crashed.'));
+    log(String(err));
   } finally {
     // Cleanup any zombie background processes
     if (activeBackgroundProcesses.size > 0) {
-       console.log(chalk.yellow(`\n[Supervisor] Cleaning up ${activeBackgroundProcesses.size} background processes...`));
+       log(chalk.yellow(`\n[Supervisor] Cleaning up ${activeBackgroundProcesses.size} background processes...`));
        for (const [id, child] of activeBackgroundProcesses.entries()) {
           child.kill('SIGKILL');
           activeBackgroundProcesses.delete(id);

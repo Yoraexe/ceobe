@@ -1,5 +1,8 @@
+import { getProjectDir } from './context';
 import chalk from 'chalk';
 import { env } from '../config/env';
+
+
 import { readAllKeys, KEY_DEFINITIONS, getRequiredKeyForActiveProviders } from './keyManager';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -82,7 +85,7 @@ export async function runDoctor(): Promise<void> {
 
   // 3. Workspace Check
   console.log(chalk.bold('\n3. Workspace Status:'));
-  const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+  const ceobeDir = path.join(getProjectDir(), '.ceobe');
   if (fs.existsSync(ceobeDir)) {
     console.log(chalk.green(`  ✓ .ceobe/ directory exists.`));
     const logPath = path.join(ceobeDir, 'execution.log');

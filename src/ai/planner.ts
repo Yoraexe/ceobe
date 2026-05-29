@@ -1,10 +1,11 @@
-// Module: src/ai/planner.ts
-// Purpose: Orchestrates all planning phases (BRD, Design, Architecture, Tasks, DevOps, Audit).
-//          Provider-agnostic: uses createPlannerAdapter() for all planning phases.
-//          The AUDIT phase uses a DEDICATED 'qa' role adapter to prevent self-evaluation bias.
+// Tujuan: Mengatur seluruh fase perencanaan (BRD, Design, Architecture, Tasks, DevOps, Audit).
 // Caller: src/index.ts, src/ai/supervisor.ts
-// Dependencies: providers/router, contextLoader, chalk, ora
-// Side Effects: HTTP requests to the configured planner AND qa AI providers
+// Dependensi: providers/router, contextLoader, chalk, ora
+// Main Functions: selectRelevantSkills, generateBRD, generateDesign, generateArchitecture, generateTasks, generateDevOps, auditPlan
+// Side Effects: Mengirim permintaan API ke provider AI (planner dan qa)
+// v1.0.0: Perencanaan Modular dengan Skill Router.
+
+import { log } from '../utils/context';
 
 import { createProviderAdapter } from './providers/router';
 import chalk from 'chalk';
@@ -116,7 +117,7 @@ Your Job:
 
 Output ONLY the markdown Business Requirements Document (BRD).
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Apply ONLY the feedback relevant to the BRD phase):\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('brd-template.md')}
@@ -168,7 +169,7 @@ ${brdContent}
 
 Output ONLY the markdown Design Specification based on the BRD. Outline the color palette, typography, core components, and screen layouts. Do not write full code.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Apply ONLY the feedback relevant to the UI/UX & Design System phase):\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('design-template.md')}
@@ -217,7 +218,7 @@ ${designContent}
 
 Output ONLY the markdown Architecture Document. Outline the tech stack, data schemas, and folder structures. Do not write full code.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Apply ONLY the feedback relevant to the Architecture phase):\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('architecture-template.md')}
@@ -262,7 +263,7 @@ ${architectureContent}
 
 Output ONLY the markdown execution checklist (a Jira-like task list). Detail what file paths to create/edit and exactly what code the Executor AI should write in each file.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Apply ONLY the feedback relevant to the Task / Implementation Plan phase):\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('tasks-template.md')}
@@ -311,7 +312,7 @@ ${taskContent}
 
 Output ONLY the markdown DevOps Specification. Outline environment variables, Docker config, CI/CD pipeline, and production readiness checklist. Do not write full code.
 
-${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n` : ''}
+${auditorFeedback ? `\nIMPORTANT FEEDBACK FROM AUDITOR (Apply ONLY the feedback relevant to the DevOps phase):\n${auditorFeedback}\n` : ''}
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
 ${readTemplate('devops-template.md')}
@@ -330,10 +331,22 @@ ${readTemplate('devops-template.md')}
 // ─────────────────────────────────────────────────────────────────────────────
 // PHASE 4 — AUDIT  (uses independent 'qa' role, NOT planner)
 // ─────────────────────────────────────────────────────────────────────────────
+export interface AuditResult {
+  passed: boolean;
+  feedback?: string;
+  affected?: {
+    brd: boolean;
+    design: boolean;
+    arch: boolean;
+    devops: boolean;
+    task: boolean;
+  };
+}
+
 export async function auditPlan(
   combinedContent: string,
   selectedSkills: string[] = []
-): Promise<{ passed: boolean; feedback?: string }> {
+): Promise<AuditResult> {
   // ⚠️  CRITICAL: Always use the QA auditor, NOT the planner.
   // The model that designed the plans must NOT also be the one validating them.
   const { adapter, tag } = getQaAuditor();
@@ -365,18 +378,47 @@ Your Job:
 
 If the plans are 100% solid, reply ONLY with the word: "APPROVED".
 If there are critical conflicts or missing steps, reply with a markdown list of mandatory changes. Do NOT say "APPROVED" if there are issues.
+At the very end of your response, you MUST include a JSON block indicating which artifacts need to be regenerated based on your findings:
+\`\`\`json
+{
+  "brd": boolean,
+  "design": boolean,
+  "arch": boolean,
+  "devops": boolean,
+  "task": boolean
+}
+\`\`\`
 `;
 
     const output = await adapter.generate(prompt, 0.1);
-    if (output === 'APPROVED') {
+    const isApproved = output.trim().toUpperCase() === 'APPROVED';
+    if (isApproved) {
       spinner.succeed(chalk.green(`${tag} Audit PASSED. Blueprint is ready for execution.`));
       return { passed: true };
     } else {
       spinner.warn(chalk.yellow(`${tag} Audit FAILED. Conflicts or missing steps detected.`));
-      console.log(chalk.cyan('\n--- Auditor Feedback ---\n'));
-      console.log(output);
-      console.log(chalk.cyan('\n-------------------------\n'));
-      return { passed: false, feedback: output };
+      log(chalk.cyan('\n--- Auditor Feedback ---\n'));
+      log(output);
+      log(chalk.cyan('\n-------------------------\n'));
+      
+      let affected = { brd: true, design: true, arch: true, devops: true, task: true };
+      const jsonMatch = output.match(/\`\`\`json\s*(\{[\s\S]*?\})\s*\`\`\`/);
+      if (jsonMatch && jsonMatch[1]) {
+         try {
+            const parsed = JSON.parse(jsonMatch[1]);
+            affected = {
+              brd: Boolean(parsed.brd),
+              design: Boolean(parsed.design),
+              arch: Boolean(parsed.arch),
+              devops: Boolean(parsed.devops),
+              task: Boolean(parsed.task)
+            };
+         } catch(e) {
+            log(chalk.dim(`[Planner Debug] JSON parse failed during audit: ${e}`));
+         }
+      }
+
+      return { passed: false, feedback: output, affected };
     }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);

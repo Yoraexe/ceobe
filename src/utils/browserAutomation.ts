@@ -1,3 +1,4 @@
+import { getProjectDir } from './context';
 // Tujuan: Mengotomatisasi peramban Chromium (Headless) untuk mengambil tangkapan layar UI.
 // Caller: src/ai/tools/systemTools.ts
 // Dependensi: puppeteer, path, fs
@@ -7,7 +8,8 @@
 import puppeteer from 'puppeteer';
 import * as path from 'path';
 import * as fs from 'fs';
-import { env } from '../config/env';
+
+
 
 export interface ScreenshotResult {
   base64Data: string;
@@ -35,7 +37,7 @@ export async function executeBrowserInteraction(
 ): Promise<ScreenshotResult> {
   let targetUrl = urlOrPath;
   if (!urlOrPath.startsWith('http://') && !urlOrPath.startsWith('https://')) {
-    const fullPath = path.resolve(env.TARGET_PROJECT_DIR, urlOrPath);
+    const fullPath = path.resolve(getProjectDir(), urlOrPath);
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found: ${fullPath}`);
     }

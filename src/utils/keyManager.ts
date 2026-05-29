@@ -398,8 +398,9 @@ export async function runSetupWizard(): Promise<void> {
   console.log(chalk.gray('Key akan disimpan secara aman di ~/.ceobe/keys.json (hanya bisa dibaca oleh user Anda)\n'));
 
   const stored = readAllKeys();
-  const required = KEY_DEFINITIONS.filter((k) => k.required);
-  const optional = KEY_DEFINITIONS.filter((k) => !k.required);
+  const activeRequiredKeys = getRequiredKeyForActiveProviders();
+  const required = KEY_DEFINITIONS.filter((k) => activeRequiredKeys.includes(k.envKey));
+  const optional = KEY_DEFINITIONS.filter((k) => !activeRequiredKeys.includes(k.envKey));
 
   const processKeys = async (keys: KeyDefinition[], label: string) => {
     console.log(chalk.underline(`\n${label}`));

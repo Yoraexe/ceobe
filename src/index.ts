@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { getProjectDir } from './utils/context';
 
 // Module: src/index.ts
 // Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
@@ -11,7 +12,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 
-import { env } from './config/env';
 import {
   selectRelevantSkills, generateBRD, generateArchitecture,
   generateImplementationPlan, generateDesignSpec,
@@ -36,7 +36,7 @@ import {
 import { getCostSummary } from './utils/costTracker';
 import { startTelegramDaemon } from './telegram/telegramDaemon';
 
-const VERSION = '1.8.3';
+const VERSION = '1.9.0';
 const program = new Command();
 
 /**
@@ -156,7 +156,7 @@ program
     info(`Workspace: ${chalk.white(process.cwd())}`);
 
     try {
-      const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+      const ceobeDir = path.join(getProjectDir(), '.ceobe');
       if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
       printStep(1, TOTAL_STEPS, 'Memilih skill yang relevan...');
@@ -185,7 +185,7 @@ program
       fs.writeFileSync(path.join(ceobeDir, `${prefix}task.md`), plan);
       ok(`Task Plan tersimpan → ${chalk.cyan(`.ceobe/${prefix}task.md`)}`);
 
-      markPhaseComplete(options.feature ? 'build-feature' : 'plan', 'audit');
+      await markPhaseComplete(options.feature ? 'build-feature' : 'plan', 'audit');
 
       printSection('✅ Planning Selesai!');
       console.log(chalk.dim(`  Semua dokumen tersimpan di folder ${chalk.white('.ceobe/')}`));
@@ -217,7 +217,7 @@ program
     printSection('🔍 Mengaudit Plan...');
 
     try {
-      const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+      const ceobeDir = path.join(getProjectDir(), '.ceobe');
       const get = (name: string) => path.join(ceobeDir, prefix ? `${prefix}${name}` : name);
 
       const brdPath = get('brd.md'), archPath = get('architecture.md');
@@ -247,7 +247,7 @@ program
       const result = await auditPlan(combinedContent, selectedSkills);
 
       if (result.passed) {
-        markPhaseComplete('audit', 'execute');
+        await markPhaseComplete('audit', 'execute');
         printSection('✅ Audit Lulus!');
         ok('Semua plan sudah konsisten dan siap dieksekusi.');
         printNextStep('Jalankan executor untuk memulai pembangunan:', `ceobe execute ${prefix ? prefix + 'task.md' : ''}`);
@@ -282,7 +282,7 @@ program
     if (options.sandbox) activateSandbox();
 
     try {
-      const taskPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', taskFile);
+      const taskPath = path.join(getProjectDir(), '.ceobe', taskFile);
       if (!fs.existsSync(taskPath)) {
         printError(
           `File task tidak ditemukan: .ceobe/${taskFile}`,
@@ -301,7 +301,7 @@ program
       }
 
       await executePlan(planContent);
-      markPhaseComplete('execute', 'done');
+      await markPhaseComplete('execute', 'done');
 
       printSection('🎉 Eksekusi Selesai!');
       ok('Proyek berhasil dibangun oleh Ceobe.');
@@ -321,7 +321,7 @@ program
   .action(async () => {
     printBanner();
     printSection('🧠 Mengindeks Workspace...');
-    info(`Target: ${chalk.cyan(env.TARGET_PROJECT_DIR)}`);
+    info(`Target: ${chalk.cyan(getProjectDir())}`);
     try {
       await indexWorkspace();
       ok('Workspace berhasil diindeks. Ceobe kini memiliki memori semantik proyek ini.');
@@ -399,7 +399,7 @@ program
   .description('📝  Tampilkan log eksekusi terbaru')
   .option('-n <lines>', 'Jumlah baris terakhir yang ditampilkan', '80')
   .action((options: { n: string }) => {
-    const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
+    const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
     if (!fs.existsSync(logPath)) {
       printError(
         'Log tidak ditemukan',
@@ -441,7 +441,7 @@ program
   .action(() => {
     printBanner();
     printSection('📊 Status Pipeline Proyek');
-    const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+    const ceobeDir = path.join(getProjectDir(), '.ceobe');
 
     if (!fs.existsSync(ceobeDir)) {
       warn('Workspace belum diinisialisasi. Belum ada plan yang dibuat.');
@@ -515,7 +515,7 @@ program
   .description('💣  Hapus semua plan & state Ceobe di workspace ini')
   .option('--yes', 'Konfirmasi otomatis tanpa prompt')
   .action((options: { yes: boolean }) => {
-    const ceobeDir = path.join(env.TARGET_PROJECT_DIR, '.ceobe');
+    const ceobeDir = path.join(getProjectDir(), '.ceobe');
     if (!fs.existsSync(ceobeDir)) {
       warn('Folder .ceobe/ tidak ditemukan. Workspace sudah bersih.');
       return;

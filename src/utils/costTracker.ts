@@ -4,6 +4,7 @@
 // v1.8.0: Fase 2 - Cost Tracking & Budget Limits
 
 import chalk from 'chalk';
+import { log } from './context';
 
 export interface TokenUsage {
   model: string;
@@ -47,8 +48,10 @@ export function recordUsage(usage: TokenUsage): void {
 export function getSessionCost(): number {
   let totalCost = 0;
   for (const usage of sessionUsage) {
-    // Find closest matching pricing tier based on model name substring
-    const modelKey = Object.keys(PRICING).find(k => usage.model.toLowerCase().includes(k));
+    // Find closest matching pricing tier based on model name substring, sorting by length desc to match specific models first (e.g. gpt-4o-mini vs gpt-4o)
+    const modelKey = Object.keys(PRICING)
+      .sort((a, b) => b.length - a.length)
+      .find(k => usage.model.toLowerCase().includes(k));
     const rates = modelKey ? PRICING[modelKey] : { input: 0, output: 0 };
     
     const inputCost = (usage.inputTokens / 1_000_000) * rates.input;
@@ -74,6 +77,6 @@ export function getCostSummary(): string {
 }
 
 export function printCostSummary(): void {
-  console.log(chalk.cyan(`\n📊 Laporan Penggunaan API:`));
-  console.log(chalk.cyan(`  ${getCostSummary()}`));
+  log(chalk.cyan(`\n📊 Laporan Penggunaan API:`));
+  log(chalk.cyan(`  ${getCostSummary()}`));
 }

@@ -1,13 +1,11 @@
-// Module: src/ai/executor.ts
-// Purpose: Execution Engine. Runs the agent loop using any configured AI provider.
-//          Provider selection is handled by createExecutorAdapter() - not here.
-//          When mode=ask, destructive tool calls pause and require user confirmation.
-//          v1.7.0: Self-Healing — when execute_command fails, the executor injects a
-//          "FIX THIS ERROR" directive and retries autonomously up to MAX_SELF_HEAL times.
+// Tujuan: Menjalankan agent loop berdasarkan rencana eksekusi menggunakan AI provider.
 // Caller: src/index.ts, src/ai/supervisor.ts
-// Dependencies: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path
-// Side Effects: Sends HTTP requests to the configured AI provider, calls system tools (I/O).
+// Dependensi: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path
 // Main Functions: executePlan, trimMessages
+// Side Effects: Mengirim permintaan API ke provider AI, memanggil perkakas sistem (I/O file/command)
+// v1.7.0: Self-Healing - autonomous retry on failed commands.
+
+import { env } from '../config/env';
 
 import { createExecutorAdapter } from './providers/router';
 import type { NormalizedMessage, NormalizedContentBlock, NormalizedTool } from './providers/types';
@@ -16,10 +14,11 @@ import ora from 'ora';
 import { tools as rawTools, handleToolCall } from './tools/systemTools';
 import * as fs from 'fs';
 import * as path from 'path';
-import { env } from '../config/env';
+import { getProjectDir, log } from '../utils/context';
 import { markFileComplete, markSelfHeal } from '../utils/stateManager';
 import { getActiveMode, SENSITIVE_TOOLS, confirmToolCall } from '../utils/modeManager';
 import { recordUsage, checkBudget } from '../utils/costTracker';
+import { withRetry } from '../utils/retry';
 import { loadDynamicTools } from './plugins/pluginLoader';
 
 // Cast Ceobe's internal tool format to the normalized type
@@ -86,7 +85,7 @@ export async function executePlan(
   let selfHealCount = 0;
 
   try {
-    const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
+    const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
     if (!fs.existsSync(path.dirname(logPath))) {
       fs.mkdirSync(path.dirname(logPath), { recursive: true });
     }
@@ -95,7 +94,7 @@ export async function executePlan(
       fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${text}\n`, 'utf8');
     };
 
-    const dynamicTools = await loadDynamicTools(env.TARGET_PROJECT_DIR);
+    const dynamicTools = await loadDynamicTools(getProjectDir());
     const finalTools = [...tools, ...dynamicTools];
 
     logExecution(`--- STARTED EXECUTION (provider: ${adapter.name}, model: ${adapter.modelId}) ---`);
@@ -133,7 +132,7 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
       messages = trimMessages(messages, 25);
 
-      const response = await adapter.chat(messages, finalTools, systemInstruction);
+      const response = await withRetry(() => adapter.chat(messages, finalTools, systemInstruction));
 
       // Record usage for budget tracking
       if (response.usage) {
@@ -185,9 +184,9 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
         spinner.succeed(
           chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) execution complete.`)
         );
-        console.log(chalk.cyan('\n--- Final Response ---\n'));
-        if (textBlock?.text) console.log(textBlock.text);
-        console.log(chalk.cyan('\n----------------------\n'));
+        log(chalk.cyan('\n--- Final Response ---\n'));
+        if (textBlock?.text) log(textBlock.text);
+        log(chalk.cyan('\n----------------------\n'));
       } else {
         // --- Execute tool calls and feed results back ---
         const toolResultBlocks: NormalizedContentBlock[] = [];
@@ -207,13 +206,13 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
             } catch (abortErr: unknown) {
               // User typed 'a' / 'abort' — stop the entire session
               const msg = abortErr instanceof Error ? abortErr.message : String(abortErr);
-              console.log(chalk.red(`\n[Mode: Bertanya] ${msg}`));
+              log(chalk.red(`\n[Mode: Bertanya] ${msg}`));
               logExecution(`USER_ABORT: Session terminated by user during ${block.name}`);
               return;
             }
 
             if (!approved) {
-              console.log(chalk.gray(`  ↳ Dilewati oleh pengguna.\n`));
+              log(chalk.gray(`  ↳ Dilewati oleh pengguna.\n`));
               toolResultBlocks.push({
                 type: 'tool_result',
                 tool_use_id: block.id,
@@ -268,14 +267,14 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
           // LLM understands it MUST fix the code — not just acknowledge the error.
           if (block.name === 'execute_command' && isCommandFailure(resultStr)) {
             selfHealCount++;
-            markSelfHeal(); // Persist cycle count to .ceobe/ceobe-state.json
+            await markSelfHeal(); // Persist cycle count to .ceobe/ceobe-state.json
             spinner.warn(
               chalk.yellow(`[Self-Heal ${selfHealCount}/${MAX_SELF_HEAL}] Command failed. Requesting AI bug-fix...`)
             );
             spinner.start();
             logExecution(`SELF_HEAL[${selfHealCount}/${MAX_SELF_HEAL}]: Command failure detected in tool '${block.name}'.`);
 
-            if (selfHealCount > MAX_SELF_HEAL) {
+            if (selfHealCount >= MAX_SELF_HEAL) {
               throw new Error(
                 `[Self-Heal] Maximum autonomous repair cycles (${MAX_SELF_HEAL}) exceeded.\n` +
                 `Last failure output:\n${resultStr.substring(0, 1000)}`
@@ -305,7 +304,7 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
             (block.name === 'write_file' || block.name === 'edit_file') &&
             block.input?.file_path
           ) {
-            markFileComplete(String(block.input.file_path));
+            await markFileComplete(String(block.input.file_path));
           }
 
           toolResultBlocks.push({
@@ -328,7 +327,7 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
     spinner.fail(
       chalk.red(`[${adapter.name.toUpperCase()}] Execution failed: ${msg}`)
     );
-    const logPath = path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'execution.log');
+    const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
     fs.appendFileSync(
       logPath,
       `[${new Date().toISOString()}] ERROR: ${msg}\n`,

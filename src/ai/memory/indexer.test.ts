@@ -1,3 +1,9 @@
+// Tujuan: Unit testing untuk modul indexer.ts.
+// Caller: vitest runner
+// Dependensi: vitest, fs, indexer, vectorStore
+// Main Functions: -
+// Side Effects: Mocking filesystem dan Vector Store
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import { getEmbedding, indexWorkspace } from './indexer';
@@ -49,11 +55,13 @@ describe('indexer', () => {
     }) as any);
     vi.spyOn(fs, 'statSync').mockImplementation((p: any) => ({
       isDirectory: () => !p.endsWith('.ts'),
-      isFile: () => p.endsWith('.ts')
+      isFile: () => p.endsWith('.ts'),
+      size: 100,
+      mtimeMs: Date.now()
     }) as any);
     
     // Mock file content (small file, 1 chunk)
-    vi.spyOn(fs, 'readFileSync').mockReturnValue('console.log("hello");');
+    vi.spyOn(fs, 'readFileSync').mockReturnValue('log("hello");');
     
     const saveSpy = vi.spyOn(vectorStore, 'saveEmbeddings');
     
@@ -65,7 +73,7 @@ describe('indexer', () => {
     // Verify arguments passed to saveEmbeddings
     const savedChunks = saveSpy.mock.calls[0][0];
     expect(savedChunks.length).toBe(1);
-    expect(savedChunks[0].content).toBe('console.log("hello");');
+    expect(savedChunks[0].content).toBe('log("hello");');
     expect(savedChunks[0].embedding).toEqual([0.1, 0.2]);
   });
-});
+});

@@ -8,7 +8,9 @@ Ceobe now utilizes a **Three Brain Pattern** to prevent AI hallucinations and el
 2. **QA Auditor (The Independent Reviewer)**: Strictly reviews the Planner's blueprint for logic gaps and contradictions *before* any code is written.
 3. **Executor (The Programmer)**: Follows the validated blueprint to write the code. Best paired with fast/cheap models (e.g., Gemini 2.5 Flash, GLM, or Llama 3).
 
-## ⚡ Features (v1.8.0 Enterprise Upgrades)
+## ⚡ Features (v1.9.0 Enterprise Edition)
+- **🔐 Concurrent File-Lock Safety (New):** Rock-solid thread safety for multi-agent I/O. File writes are protected with `proper-lockfile` and strict mutex-like write locks, eliminating corruption even when 10 AI subagents write simultaneously!
+- **🌐 Strict Context Isolation (New):** Fully supports Multi-Tenancy for the Telegram Daemon. Each Telegram user session has strict project boundaries and dynamic path resolution (`executionContext`), eliminating path traversal vulnerabilities.
 - **📱 Telegram Remote Daemon:** Command and monitor your AI orchestration fully from your mobile phone! Includes multi-project session management (`/cd`, `/addproject`) and remote file viewing (`/read`).
 - **🛡️ Interactive Human-In-The-Loop (HITL):** Approve or reject dangerous commands and file deletions directly via Telegram Inline Buttons.
 - **🧩 Dynamic Plugin System:** Inject custom behaviors and tools into the agent by simply dropping `.ts` scripts into `.ceobe/plugins/`. No core modifications needed!
@@ -89,8 +91,12 @@ ceobe daemon --telegram
 **In Telegram, simply type:**
 - `/projects` and `/addproject <name> <path>` to manage workspaces.
 - `/cd <name>` to seamlessly switch contexts.
+- `/mode <ask|autonomous>` or just `/ask` and `/auto` to toggle between HITL confirmation and full autonomy.
+- `/cost` and `/status` to track execution metrics.
+- `/logs` to tail the recent terminal logs.
+- `/cancel` to clear the task queue.
+- Use `/read <file>` to fetch the generated design document or any source code.
 - Send a prompt: *"Tolong buatkan halaman login..."*
-- Use `/read brd` to fetch the generated design document.
 - Approve/Reject commands directly using Interactive Buttons!
 
 ## 🔍 Utilities

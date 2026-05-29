@@ -1,13 +1,11 @@
-// Module: src/ai/providers/router.ts
-// Purpose: The Provider Router - identifies providers from environment and returns
-//          the correct IProviderAdapter instance. This is the ONLY place where
-//          provider selection logic lives. planner.ts and executor.ts stay completely clean.
+// Tujuan: Mengidentifikasi provider dari environment dan mengembalikan adapter IProviderAdapter yang sesuai.
 // Caller: src/ai/planner.ts, src/ai/executor.ts
-// Dependencies: AnthropicAdapter, OpenAICompatibleAdapter, GeminiAdapter, env, types
-// Side Effects: none
-// Role Support: 'planner' | 'executor' | 'qa'
-//   - 'qa' falls back to planner provider if CEOBE_QA_PROVIDER is not set.
-//   - Best practice: configure a DIFFERENT provider for 'qa' to avoid self-evaluation bias.
+// Dependensi: AnthropicAdapter, OpenAICompatibleAdapter, GeminiAdapter, env, types, chalk
+// Main Functions: createProviderAdapter, createExecutorAdapter
+// Side Effects: Tidak ada.
+// v1.0.0: Router Provider untuk Multi-Tenant AI.
+
+import { log } from '../../utils/context';
 
 import { AnthropicAdapter } from './anthropicAdapter';
 import { OpenAICompatibleAdapter } from './openAICompatibleAdapter';
@@ -52,9 +50,9 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
     provider = (process.env['CEOBE_QA_PROVIDER'] || process.env['CEOBE_PLANNER_PROVIDER'] || '').toLowerCase();
     modelOverride = process.env['CEOBE_QA_MODEL'] || process.env['CEOBE_PLANNER_MODEL'];
     if (process.env['CEOBE_QA_PROVIDER']) {
-      console.log(chalk.dim(`[Provider Router] Role: QA | Using dedicated QA provider`));
+      log(chalk.dim(`[Provider Router] Role: QA | Using dedicated QA provider`));
     } else {
-      console.log(chalk.dim(`[Provider Router] Role: QA | No CEOBE_QA_PROVIDER set — falling back to Planner provider`));
+      log(chalk.dim(`[Provider Router] Role: QA | No CEOBE_QA_PROVIDER set — falling back to Planner provider`));
     }
   } else {
     const otherRole = role === 'planner' ? 'EXECUTOR' : 'PLANNER';
@@ -73,13 +71,13 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
 
   if (provider === 'gemini') {
     const modelId = modelOverride || KNOWN_PROVIDERS.gemini.defaultModel;
-    console.log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using Gemini → ${modelId}`));
+    log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using Gemini → ${modelId}`));
     return new GeminiAdapter(modelId);
   }
 
   if (provider === 'claude' || provider === 'anthropic') {
     const modelId = modelOverride || KNOWN_PROVIDERS.claude.defaultModel;
-    console.log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using Anthropic Claude → ${modelId}`));
+    log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using Anthropic Claude → ${modelId}`));
     return new AnthropicAdapter(modelId);
   }
 
@@ -98,7 +96,7 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
       );
     }
 
-    console.log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using custom provider '${provider}' → ${customModel}`));
+    log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using custom provider '${provider}' → ${customModel}`));
     return new OpenAICompatibleAdapter(provider, customModel, customKey, customBaseURL);
   }
 
@@ -113,7 +111,7 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
     );
   }
 
-  console.log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using ${provider.toUpperCase()} → ${modelId}`));
+  log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using ${provider.toUpperCase()} → ${modelId}`));
   return new OpenAICompatibleAdapter(provider, modelId, apiKey || '', known.baseURL);
 }
 

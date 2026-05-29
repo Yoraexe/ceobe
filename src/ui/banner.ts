@@ -1,15 +1,18 @@
-// Module: src/ui/banner.ts
-// Tujuan: Terminal UI helpers rendering banners, step indicators, section headers, and styled output.
-// Caller: src/index.ts and command handlers.
-// Dependensi: chalk, path, config/env.
+// Tujuan: Membantu merender elemen UI terminal seperti banner, indikator langkah, header bagian, dan keluaran bergaya.
+// Caller: src/index.ts dan berbagai file perintah CLI.
+// Dependensi: chalk, path, utils/context.
 // Main Functions: printBanner, printSection, printStep, ok, warn, fail, info, hint, printNextStep, printError, printHelp.
-// Side Effects: Writes formatted messages directly to console stdout.
+// Side Effects: Menulis pesan berformat secara langsung ke standard output (console.log).
+// v1.0.0: Terminal UI Helpers.
+
+import { getProjectDir } from '../utils/context';
 
 import chalk from 'chalk';
 import * as path from 'path';
-import { env } from '../config/env';
 
-const VERSION = '1.8.3';
+
+
+const VERSION = '1.9.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
@@ -22,8 +25,13 @@ export function printBanner(): void {
   const plannerProvider = rawPlanner || rawExecutor;
   const executorProvider = rawExecutor || rawPlanner;
   
-  const projectDir = env.TARGET_PROJECT_DIR;
-  const projectName = path.basename(projectDir);
+  let projectName = 'default';
+  try {
+    const projectDir = getProjectDir();
+    projectName = path.basename(projectDir);
+  } catch (e) {
+    // Graceful fallback if getProjectDir throws outside active context
+  }
 
   const plannerDisplay = plannerProvider ? chalk.cyan(plannerProvider.toUpperCase()) : chalk.yellow('(NOT SET)');
   const executorDisplay = executorProvider ? chalk.cyan(executorProvider.toUpperCase()) : chalk.yellow('(NOT SET)');
@@ -161,6 +169,22 @@ export function printHelp(): void {
       `  ${chalk.cyan(cmd.padEnd(17))} ${chalk.gray(arg.padEnd(26))} ${desc ? chalk.dim(desc) : ''}`
     );
   }
+
+  console.log('');
+  console.log(chalk.bold('  TELEGRAM COMMANDS (When running daemon --telegram)'));
+  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
+  console.log(`  ${chalk.cyan('/start')}                       ${chalk.dim('Wake up the bot and check status')}`);
+  console.log(`  ${chalk.cyan('/projects')}                    ${chalk.dim('List all your active workspaces')}`);
+  console.log(`  ${chalk.cyan('/addproject <name> <path>')}    ${chalk.dim('Register a new workspace')}`);
+  console.log(`  ${chalk.cyan('/cd <name>')}                   ${chalk.dim('Switch to a specific workspace')}`);
+  console.log(`  ${chalk.cyan('/cost')}                        ${chalk.dim('View live API token usage & costs')}`);
+  console.log(`  ${chalk.cyan('/status')}                      ${chalk.dim('Check current pipeline status')}`);
+  console.log(`  ${chalk.cyan('/logs')}                        ${chalk.dim('Tail the last 50 lines of execution logs')}`);
+  console.log(`  ${chalk.cyan('/read <file>')}                 ${chalk.dim('Read project files directly via chat')}`);
+  console.log(`  ${chalk.cyan('/mode <ask|autonomous>')}       ${chalk.dim('Set manual confirmation or full autonomy')}`);
+  console.log(`  ${chalk.cyan('/ask | /auto')}                 ${chalk.dim('Shortcuts to change execution mode')}`);
+  console.log(`  ${chalk.cyan('/cancel')}                      ${chalk.dim('Clear the task queue and stop execution')}`);
+  console.log(`  ${chalk.dim('  * Any normal message will be treated as an instruction for Ceobe.')}`);
 
   console.log('');
   console.log(chalk.bold('  KEY MANAGEMENT'));

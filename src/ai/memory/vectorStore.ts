@@ -41,6 +41,7 @@ export function loadEmbeddings(): CodeChunk[] {
     const data = fs.readFileSync(filePath, 'utf8');
     return JSON.parse(data);
   } catch (error) {
+    console.debug(`[VectorStore Debug] Failed to load embeddings: ${error}`);
     return [];
   }
 }

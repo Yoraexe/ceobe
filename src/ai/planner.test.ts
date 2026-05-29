@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-export const mockGenerate = vi.fn();
+const mockGenerate = vi.fn();
 
 vi.mock('./providers/router', () => ({
   createProviderAdapter: vi.fn().mockReturnValue({

@@ -12,8 +12,6 @@ export interface TaskItem {
   id: string;
   title: string;
   content: string;
-  /** Dependencies: task IDs that must complete before this task can start. */
-  dependsOn: string[];
 }
 
 export interface TaskWave {
@@ -28,28 +26,26 @@ export interface TaskWave {
  * Returns true if the task clearly depends on a previous step.
  */
 function hasDependencyKeyword(text: string): boolean {
-  const lower = text.toLowerCase();
   const DEPENDENCY_SIGNALS = [
     'after', 'once', 'requires', 'depends on', 'using the', 'based on',
     'integrate with', 'connect to the', 'import from', 'use the service',
     'after completing', 'after the', 'when the',
     'setelah', 'setelah selesai', 'menggunakan', 'berdasarkan', 'integrasi',
   ];
-  return DEPENDENCY_SIGNALS.some(sig => lower.includes(sig));
+  return DEPENDENCY_SIGNALS.some(sig => text.includes(sig));
 }
 
 /**
  * Detects tasks that are always safe to run in parallel (no code dependencies).
  */
 function isAlwaysParallel(text: string): boolean {
-  const lower = text.toLowerCase();
   const INDEPENDENT_SIGNALS = [
     'documentation', 'readme', 'dockerfile', 'docker-compose',
     '.gitignore', 'license', 'env.example', '.env.example',
     'unit test', 'unit tests', 'write test', 'add test',
     'dokumentasi', 'dokumen', 'tulis test',
   ];
-  return INDEPENDENT_SIGNALS.some(sig => lower.includes(sig));
+  return INDEPENDENT_SIGNALS.some(sig => text.includes(sig));
 }
 
 /**
@@ -78,7 +74,7 @@ export function parseTaskWaves(taskMarkdown: string): TaskWave[] {
     // No structured tasks found — treat entire plan as a single task
     return [{
       wave: 0,
-      tasks: [{ id: 'task-0', title: 'Full Plan', content: taskMarkdown, dependsOn: [] }]
+      tasks: [{ id: 'task-0', title: 'Full Plan', content: taskMarkdown }]
     }];
   }
 
@@ -88,7 +84,6 @@ export function parseTaskWaves(taskMarkdown: string): TaskWave[] {
       id: `task-${i}`,
       title: titleLine || `Task ${i}`,
       content: block,
-      dependsOn: [],
     };
   });
 

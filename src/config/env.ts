@@ -1,6 +1,6 @@
 // Module: src/config/env.ts
 // Purpose: Loads and validates all environment configuration.
-//          Priority order: ~/.ceobe/keys.json > system env vars > .env file
+//          Priority order: system env vars > ~/.ceobe/keys.json > .env file
 // Caller: Every module in Ceobe
 // Dependencies: dotenv, chalk, path, os, fs (via keyManager)
 // Side Effects: Reads ~/.ceobe/keys.json; reads .env file; calls process.exit on validation failure
@@ -9,10 +9,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import dotenv from 'dotenv';
-import chalk from 'chalk';
 
 // ── Step 1: Inject keys from ~/.ceobe/keys.json into process.env
-//    This runs BEFORE dotenv so stored keys take highest priority.
+//    This runs BEFORE dotenv so stored keys take priority over .env (but system env still wins).
 function injectStoredKeys(): void {
   const keysPath = path.join(os.homedir(), '.ceobe', 'keys.json');
   if (!fs.existsSync(keysPath)) return;
@@ -71,7 +70,6 @@ export interface EnvConfig {
 }
 
 export function loadEnv(): EnvConfig {
-  const missingKeys: string[] = [];
 
   /** Optional keys — returns empty string if absent, no crash */
   const getOptional = (key: string): string => process.env[key] || '';
@@ -106,18 +104,6 @@ export function loadEnv(): EnvConfig {
     CEOBE_SANDBOX: (process.env.CEOBE_SANDBOX as 'docker' | 'none') || 'none',
     CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 0,
   };
-
-  if (missingKeys.length > 0) {
-    if (process.env.VITEST) {
-      missingKeys.forEach(key => { (config as any)[key] = 'test_dummy'; });
-    } else {
-      console.error(chalk.red('\n[Ceobe] API key belum dikonfigurasi:'));
-      missingKeys.forEach(key => console.error(chalk.red(`  ✗ ${key}`)));
-      console.error(chalk.yellow('\nJalankan perintah berikut untuk mengaturnya:'));
-      console.error(chalk.cyan('  ceobe setup\n'));
-      process.exit(1);
-    }
-  }
 
   return config;
 }

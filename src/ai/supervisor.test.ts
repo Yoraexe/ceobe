@@ -22,8 +22,8 @@ vi.mock('child_process', () => ({
 }));
 
 // Mock readline
-export const mockClose = vi.fn();
-export const mockQuestion = vi.fn();
+const mockClose = vi.fn();
+const mockQuestion = vi.fn();
 vi.mock('readline', () => ({
   createInterface: vi.fn().mockReturnValue({
     question: (...args: any[]) => mockQuestion(...args),

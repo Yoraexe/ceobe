@@ -11,10 +11,10 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import chalk from 'chalk';
-import { env } from '../config/env';
+import { getProjectDir, log } from './context';
 
 const execAsync = promisify(exec);
-const cwd = () => env.TARGET_PROJECT_DIR;
+const cwd = () => getProjectDir();
 
 const SNAPSHOT_COMMIT_MSG = 'chore(ceobe): auto-snapshot before AI execution [CEOBE_SNAPSHOT]';
 
@@ -49,7 +49,7 @@ async function hasChanges(): Promise<boolean> {
 export async function createSnapshot(): Promise<string | null> {
   const isRepo = await isGitRepo();
   if (!isRepo) {
-    console.log(chalk.yellow('[GitManager] Direktori bukan Git repo. Snapshot dilewati.'));
+    log(chalk.yellow('[GitManager] Direktori bukan Git repo. Snapshot dilewati.'));
     return null;
   }
 
@@ -59,7 +59,7 @@ export async function createSnapshot(): Promise<string | null> {
     try {
       const { stdout } = await execAsync('git rev-parse HEAD', { cwd: cwd() });
       const hash = stdout.trim();
-      console.log(chalk.dim(`[GitManager] Workspace bersih. HEAD saat ini: ${hash.substring(0, 8)}`));
+      log(chalk.dim(`[GitManager] Workspace bersih. HEAD saat ini: ${hash.substring(0, 8)}`));
       return hash;
     } catch {
       return null;
@@ -71,11 +71,11 @@ export async function createSnapshot(): Promise<string | null> {
     await execAsync(`git commit -m "${SNAPSHOT_COMMIT_MSG}" --allow-empty`, { cwd: cwd() });
     const { stdout } = await execAsync('git rev-parse HEAD', { cwd: cwd() });
     const hash = stdout.trim();
-    console.log(chalk.green(`[GitManager] ✅ Snapshot dibuat → commit ${hash.substring(0, 8)}`));
+    log(chalk.green(`[GitManager] ✅ Snapshot dibuat → commit ${hash.substring(0, 8)}`));
     return hash;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(chalk.yellow(`[GitManager] Gagal membuat snapshot: ${msg}`));
+    log(chalk.yellow(`[GitManager] Gagal membuat snapshot: ${msg}`));
     return null;
   }
 }
@@ -88,17 +88,17 @@ export async function createSnapshot(): Promise<string | null> {
 export async function rollbackToSnapshot(snapshotHash: string): Promise<void> {
   const isRepo = await isGitRepo();
   if (!isRepo) {
-    console.log(chalk.yellow('[GitManager] Bukan Git repo. Rollback tidak bisa dilakukan.'));
+    log(chalk.yellow('[GitManager] Bukan Git repo. Rollback tidak bisa dilakukan.'));
     return;
   }
 
   try {
-    console.log(chalk.red(`\n[GitManager] 🔄 Memulai rollback ke snapshot ${snapshotHash.substring(0, 8)}...`));
+    log(chalk.red(`\n[GitManager] 🔄 Memulai rollback ke snapshot ${snapshotHash.substring(0, 8)}...`));
     await execAsync(`git reset --hard ${snapshotHash}`, { cwd: cwd() });
-    console.log(chalk.green('[GitManager] ✅ Rollback berhasil. Codebase dikembalikan ke kondisi sebelum eksekusi AI.'));
+    log(chalk.green('[GitManager] ✅ Rollback berhasil. Codebase dikembalikan ke kondisi sebelum eksekusi AI.'));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(chalk.red(`[GitManager] ❌ Rollback gagal: ${msg}`));
-    console.log(chalk.yellow(`  Untuk rollback manual, jalankan: git reset --hard ${snapshotHash}`));
+    log(chalk.red(`[GitManager] ❌ Rollback gagal: ${msg}`));
+    log(chalk.yellow(`  Untuk rollback manual, jalankan: git reset --hard ${snapshotHash}`));
   }
 }

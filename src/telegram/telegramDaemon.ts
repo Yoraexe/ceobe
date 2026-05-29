@@ -1,11 +1,9 @@
-// Module: src/telegram/telegramDaemon.ts
-// Tujuan: Daemon bot Telegram yang menerima prompt teks dari user yang terotorisasi
-//         dan menjalankan Ceobe autonomous pipeline secara remote.
+// Tujuan: Daemon bot Telegram yang menerima prompt teks dari user yang terotorisasi dan menjalankan Ceobe autonomous pipeline secara remote.
 // Caller: src/index.ts (via command `ceobe daemon --telegram`)
-// Dependensi: node-telegram-bot-api, runAutonomousLoop, keyManager, MessageQueue, chalk
+// Dependensi: node-telegram-bot-api, runAutonomousLoop, keyManager, MessageQueue, chalk, fs, path, context, stateManager
 // Main Functions: startTelegramDaemon
 // Side Effects: Membuka koneksi polling ke Telegram API. Menjalankan pipeline otonom.
-// v1.7.0: Modul baru — Fase 3 dari Ceobe Enterprise Upgrade.
+// v1.9.0: Ditambahkan utilitas (/index, /doctor, /reset) dan validasi path sistem.
 
 import TelegramBot from 'node-telegram-bot-api';
 import chalk from 'chalk';
@@ -16,10 +14,11 @@ import { getActiveMode, setMode, setConfirmationBridge, clearConfirmationBridge 
 import { TelegramHITLBridge } from './hitlBridge';
 import { getActiveSession, switchSession, sessionStore } from './sessionManager';
 import { readProjects, registerProject } from '../utils/projectRegistry';
-import { env } from '../config/env';
+import { clearStateCache } from '../utils/stateManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSessionCost } from '../utils/costTracker';
+import { executionContext, log } from '../utils/context';
 
 // ── Telegram helper: memisahkan banyak user ID dari satu string ───────────────
 function getAllowedIds(raw: string): Set<number> {
@@ -30,30 +29,25 @@ function getAllowedIds(raw: string): Set<number> {
   return new Set(ids);
 }
 
-// ── Trim pesan agar aman untuk ditampilkan di Telegram ───────────────────────
-function truncate(msg: string, max = 4000): string {
-  return msg.length > max ? msg.substring(0, max) + '\n…[terpotong]' : msg;
+// Helper untuk truncate string panjang
+function truncate(str: string, max: number): string {
+  return str.length > max ? str.substring(0, max) + '...\n\n[Dipotong oleh bot]' : str;
 }
 
-/**
- * Starts the Ceobe Telegram daemon using Long Polling.
- * Reads TELEGRAM_BOT_TOKEN and TELEGRAM_ALLOWED_USERS from ~/.ceobe/keys.json.
- */
-export async function startTelegramDaemon(): Promise<void> {
+export function startTelegramDaemon(): void {
   const keys = readAllKeys();
-  const token = keys['TELEGRAM_BOT_TOKEN'] || process.env['TELEGRAM_BOT_TOKEN'] || '';
-  const allowedRaw = keys['TELEGRAM_ALLOWED_USERS'] || process.env['TELEGRAM_ALLOWED_USERS'] || '';
+  const token = keys.TELEGRAM_TOKEN || process.env.TELEGRAM_TOKEN || '';
+  const allowedRaw = keys.TELEGRAM_ALLOWED_USERS || process.env.TELEGRAM_ALLOWED_USERS || '';
 
-  // ── Pre-flight validation ──────────────────────────────────────────────────
   if (!token) {
-    console.error(chalk.red('[TelegramDaemon] ❌ TELEGRAM_BOT_TOKEN belum diset.'));
-    console.error(chalk.yellow('  Atur dengan: ceobe key set telegram-token <BOT_TOKEN>'));
+    console.error(chalk.red('\n[TelegramDaemon] Gagal: TELEGRAM_TOKEN belum dikonfigurasi.'));
+    console.error(chalk.yellow('  Jalankan: ceobe key set telegram-token <token>'));
     process.exit(1);
   }
+
   if (!allowedRaw) {
-    console.error(chalk.red('[TelegramDaemon] ❌ TELEGRAM_ALLOWED_USERS belum diset.'));
-    console.error(chalk.yellow('  Atur dengan: ceobe key set telegram-allowed-users <USER_ID_1,USER_ID_2>'));
-    console.error(chalk.dim('  Cara cari User ID: kirim pesan ke @userinfobot di Telegram.'));
+    console.error(chalk.red('\n[TelegramDaemon] Gagal: TELEGRAM_ALLOWED_USERS belum dikonfigurasi.'));
+    console.error(chalk.yellow('  Jalankan: ceobe key set telegram-allowed-users <ids>'));
     process.exit(1);
   }
 
@@ -66,7 +60,6 @@ export async function startTelegramDaemon(): Promise<void> {
 
   const bot = new TelegramBot(token, { polling: true });
 
-  // ── Pesan sambutan saat daemon siap ──────────────────────────────────────
   bot.on('polling_error', (err) => {
     console.error(chalk.red(`[TelegramDaemon] Polling error: ${err.message}`));
   });
@@ -92,13 +85,35 @@ export async function startTelegramDaemon(): Promise<void> {
           { parse_mode: 'Markdown' }
         );
       } else if (text === '/status') {
-        const busy = queue.isBusy;
-        const currentMode = getActiveMode();
-        await bot.sendMessage(chatId, busy ? `⚙️ Ceobe sedang mengerjakan tugas (Mode: ${currentMode})...` : `✅ Ceobe siap menerima tugas (Mode: ${currentMode}).`);
-      } else if (text === '/ask') {
-        const newMode = getActiveMode() === 'autonomous' ? 'ask' : 'autonomous';
-        setMode(newMode);
-        await bot.sendMessage(chatId, `🔄 Mode diubah ke: *${newMode}*\n\n${newMode === 'ask' ? '🙋 Ceobe akan meminta persetujuanmu via tombol Telegram sebelum aksi berbahaya.' : '🤖 Ceobe akan mengeksekusi semua aksi secara otonom tanpa konfirmasi.'}`, { parse_mode: 'Markdown' });
+        const active = getActiveSession(chatId);
+        const pPath = active ? active.projectPath : process.cwd();
+        await executionContext.run({ projectPath: pPath }, async () => {
+          const busy = queue.isBusy;
+          const currentMode = getActiveMode();
+          await bot.sendMessage(chatId, busy ? `⚙️ Ceobe sedang mengerjakan tugas (Mode: ${currentMode})...` : `✅ Ceobe siap menerima tugas (Mode: ${currentMode}).`);
+        });
+      } else if (text === '/ask' || text === '/auto' || text.startsWith('/mode')) {
+        const active = getActiveSession(chatId);
+        const pPath = active ? active.projectPath : process.cwd();
+        await executionContext.run({ projectPath: pPath }, async () => {
+          let newMode = getActiveMode();
+          if (text === '/ask') newMode = 'ask';
+          else if (text === '/auto') newMode = 'autonomous';
+          else if (text.startsWith('/mode ')) {
+            const requested = text.split(' ')[1]?.trim().toLowerCase();
+            if (requested === 'ask' || requested === 'autonomous') {
+              newMode = requested as 'ask' | 'autonomous';
+            } else {
+              await bot.sendMessage(chatId, '❌ Perintah tidak valid. Gunakan `/mode ask` atau `/mode autonomous`.', { parse_mode: 'Markdown' });
+              return;
+            }
+          } else {
+            await bot.sendMessage(chatId, `ℹ️ Mode saat ini: *${newMode}*\nKetik \`/mode ask\` atau \`/mode autonomous\` untuk mengubahnya.`, { parse_mode: 'Markdown' });
+            return;
+          }
+          setMode(newMode);
+          await bot.sendMessage(chatId, `🔄 Mode diatur ke: *${newMode}*\n\n${newMode === 'ask' ? '🙋 Ceobe akan meminta persetujuanmu via tombol Telegram sebelum aksi berbahaya.' : '🤖 Ceobe akan mengeksekusi semua aksi secara otonom tanpa konfirmasi.'}`, { parse_mode: 'Markdown' });
+        });
       } else if (text === '/help') {
         const helpText = `🤖 *Panduan Ceobe Telegram Daemon*\n\n` +
           `ℹ️ *Informasi & Status*\n` +
@@ -107,12 +122,18 @@ export async function startTelegramDaemon(): Promise<void> {
           `\`/logs\` - Menampilkan 50 baris terakhir log eksekusi.\n` +
           `\`/read <dokumen>\` - Mengirim file dokumen (opsi: brd, design, arch, task, devops).\n\n` +
           `⚙️ *Kontrol & Mode*\n` +
-          `\`/ask\` - Toggle konfirmasi manual (ask) vs otonom.\n` +
+          `\`/mode <ask|autonomous>\` - Mengatur mode eksekusi.\n` +
+          `\`/ask\` - Jalan pintas ke mode konfirmasi manual.\n` +
+          `\`/auto\` - Jalan pintas ke mode otonom penuh.\n` +
           `\`/cancel\` - Mengosongkan antrean tugas (membatalkan tugas yang belum berjalan).\n\n` +
           `📁 *Manajemen Workspace*\n` +
           `\`/projects\` - List semua workspace.\n` +
           `\`/cd <nama>\` - Berpindah proyek.\n` +
           `\`/addproject <nama> <path_absolut>\` - Mendaftarkan proyek baru.\n\n` +
+          `🧠 *Utilitas & Diagnostik*\n` +
+          `\`/index\` - Melakukan indeksing ulang RAG untuk project saat ini.\n` +
+          `\`/doctor\` - Menjalankan pemeriksaan API key, dependency, dan status workspace.\n` +
+          `\`/reset\` - Mereset status pipeline (state) project saat ini.\n\n` +
           `💡 *Kirimkan perintah dalam teks biasa (tanpa garis miring) untuk memulai tugas.*`;
         await bot.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
       } else if (text === '/cancel' || text === '/clear') {
@@ -126,7 +147,18 @@ export async function startTelegramDaemon(): Promise<void> {
         const pPath = active ? active.projectPath : process.cwd();
         const logPath = path.join(pPath, '.ceobe', 'execution.log');
         if (fs.existsSync(logPath)) {
-          const content = fs.readFileSync(logPath, 'utf8');
+          const stats = fs.statSync(logPath);
+          let content = '';
+          if (stats.size > 50000) {
+            const fd = fs.openSync(logPath, 'r');
+            const bufferSize = 50000;
+            const buffer = Buffer.alloc(bufferSize);
+            fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
+            fs.closeSync(fd);
+            content = buffer.toString('utf8');
+          } else {
+            content = fs.readFileSync(logPath, 'utf8');
+          }
           const lines = content.trim().split('\n');
           const lastLines = lines.slice(-50).join('\n');
           await bot.sendMessage(chatId, `📜 *50 Baris Terakhir Log (${active?.projectName || 'default'})*\n\n\`\`\`\n${truncate(lastLines, 3800)}\n\`\`\``, { parse_mode: 'Markdown' });
@@ -174,6 +206,7 @@ export async function startTelegramDaemon(): Promise<void> {
       } else if (text.startsWith('/cd ')) {
         const targetName = text.substring(4).trim();
         if (switchSession(chatId, targetName)) {
+          clearStateCache();
           await bot.sendMessage(chatId, `📂 Project aktif diubah ke: *${targetName}*`, { parse_mode: 'Markdown' });
         } else {
           await bot.sendMessage(chatId, `❌ Project '${targetName}' tidak ditemukan.\nGunakan /projects untuk melihat daftar.`, { parse_mode: 'Markdown' });
@@ -185,8 +218,96 @@ export async function startTelegramDaemon(): Promise<void> {
         } else {
           const name = args[0];
           const targetPath = args.slice(1).join(' ');
-          registerProject(name, targetPath);
-          await bot.sendMessage(chatId, `✅ Project *${name}* berhasil didaftarkan.`, { parse_mode: 'Markdown' });
+          const absolutePath = path.resolve(targetPath);
+          const isSystemDir = absolutePath === '/' || /^[a-zA-Z]:\\\\?$/.test(absolutePath) || absolutePath.toLowerCase().includes('windows\\system32') || absolutePath.toLowerCase().includes('/etc');
+          
+          if (isSystemDir) {
+            await bot.sendMessage(chatId, `🚫 Path *${absolutePath}* ditolak karena merupakan direktori sistem.`, { parse_mode: 'Markdown' });
+          } else if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
+            await bot.sendMessage(chatId, `❌ Gagal: Path tidak ditemukan atau bukan sebuah direktori:\n\`${absolutePath}\``, { parse_mode: 'Markdown' });
+          } else {
+            registerProject(name, absolutePath);
+            await bot.sendMessage(chatId, `✅ Project *${name}* berhasil didaftarkan.`, { parse_mode: 'Markdown' });
+          }
+        }
+      } else if (text === '/reset') {
+        const active = getActiveSession(chatId);
+        const pPath = active ? active.projectPath : process.cwd();
+        const statePath = path.join(pPath, '.ceobe', 'ceobe-state.json');
+        if (fs.existsSync(statePath)) {
+          try {
+            fs.unlinkSync(statePath);
+            clearStateCache();
+            await bot.sendMessage(chatId, `✅ State untuk project *${active?.projectName || 'default'}* berhasil di-reset.`, { parse_mode: 'Markdown' });
+          } catch (e: any) {
+            await bot.sendMessage(chatId, `❌ Gagal me-reset state: ${e.message}`, { parse_mode: 'Markdown' });
+          }
+        } else {
+          await bot.sendMessage(chatId, `ℹ️ Tidak ada data state aktif untuk di-reset di project ini.`, { parse_mode: 'Markdown' });
+        }
+      } else if (text === '/index') {
+        const active = getActiveSession(chatId);
+        const pPath = active ? active.projectPath : process.cwd();
+        await bot.sendMessage(chatId, `🧠 Memulai pengindeksan RAG untuk *${active?.projectName || 'default'}*...`);
+        try {
+          await executionContext.run({ projectPath: pPath }, async () => {
+            const { indexWorkspace } = require('../ai/memory/indexer');
+            await indexWorkspace();
+          });
+          await bot.sendMessage(chatId, `✅ Pengindeksan RAG selesai! Semantic memory siap digunakan.`);
+        } catch (e: any) {
+          await bot.sendMessage(chatId, `❌ Gagal melakukan pengindeksan: ${e.message}`);
+        }
+      } else if (text === '/doctor') {
+        try {
+          const active = getActiveSession(chatId);
+          await bot.sendMessage(chatId, `🩺 Menjalankan Ceobe Diagnostic Tool untuk *${active?.projectName || 'default'}*...`);
+          
+          let output = '🩺 *Ceobe Diagnostic Report*\n\n';
+          
+          const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER || '';
+          const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER || '';
+          const plannerProvider = rawPlanner || rawExecutor || '(not set)';
+          const executorProvider = rawExecutor || rawPlanner || '(not set)';
+          const plannerModel = process.env.CEOBE_PLANNER_MODEL || '(default model)';
+          const executorModel = process.env.CEOBE_EXECUTOR_MODEL || '(default model)';
+          const embeddingProvider = process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider;
+
+          output += `*0. Active Provider Configuration:*\n`;
+          output += `  Planner  → ${plannerProvider} / ${plannerModel}\n`;
+          output += `  Executor → ${executorProvider} / ${executorModel}\n`;
+          output += `  Embedding→ ${embeddingProvider}\n\n`;
+
+          output += `*1. API Keys Status:*\n`;
+          const { readAllKeys, KEY_DEFINITIONS, getRequiredKeyForActiveProviders } = require('../utils/keyManager');
+          const storedKeys = readAllKeys();
+          const requiredEnvKeys = getRequiredKeyForActiveProviders();
+          for (const envKey of requiredEnvKeys) {
+            const def = KEY_DEFINITIONS.find((d: any) => d.envKey === envKey);
+            const value = storedKeys[envKey] || process.env[envKey];
+            if (!value) {
+              output += `  ✗ ${def?.label || envKey} is *MISSING*\n`;
+            } else {
+              output += `  ✓ ${def?.label || envKey} is configured.\n`;
+            }
+          }
+          
+          output += `\n*2. System Dependencies Check:*\n`;
+          const { exec } = require('child_process');
+          const checkDep = (name: string, cmd: string) => new Promise<string>((res) => {
+            exec(cmd, (err: any, stdout: string) => {
+              if (err) res(`  ✗ ${name}: Not found\n`);
+              else res(`  ✓ ${name}: Available (${stdout.trim()})\n`);
+            });
+          });
+          output += await checkDep('Node.js', 'node -v');
+          output += await checkDep('npm', 'npm -v');
+          output += await checkDep('Docker', 'docker -v');
+          output += await checkDep('Git', 'git --version');
+          
+          await bot.sendMessage(chatId, output, { parse_mode: 'Markdown' });
+        } catch (e: any) {
+          await bot.sendMessage(chatId, `❌ Gagal menjalankan diagnostic: ${e.message}`);
         }
       }
       return;
@@ -217,12 +338,9 @@ export async function startTelegramDaemon(): Promise<void> {
     }
 
     queue.enqueue(async () => {
-      console.log(chalk.blue(`\n[TelegramDaemon] Menjalankan pipeline untuk: "${text.substring(0, 80)}..."`));
-
       // Intercept console.log selama eksekusi dan kirim ke Telegram secara berkala
       const logBuffer: string[] = [];
       let lastFlush = Date.now();
-      const originalLog = console.log;
 
       const sendLogs = async () => {
         if (logBuffer.length === 0) return;
@@ -234,43 +352,42 @@ export async function startTelegramDaemon(): Promise<void> {
         }
       };
 
-      console.log = (...args: unknown[]) => {
-        const line = args.map((a) => (typeof a === 'string' ? a.replace(/\x1b\[[0-9;]*m/g, '') : String(a))).join(' ');
-        originalLog(...args); // Tetap tampilkan di terminal lokal
+      const loggerFn = (line: string) => {
         logBuffer.push(line);
-        // Flush ke Telegram setiap 5 detik atau setiap 30 baris
         if (Date.now() - lastFlush > 5000 || logBuffer.length >= 30) {
           lastFlush = Date.now();
           sendLogs().catch(() => {});
         }
       };
 
-      try {
-        // Set dynamic TARGET_PROJECT_DIR based on session
-        const activeProject = getActiveSession(chatId);
-        if (activeProject) {
-          env.TARGET_PROJECT_DIR = activeProject.projectPath;
-          process.chdir(env.TARGET_PROJECT_DIR); // Change working directory for commands
-          console.log(chalk.blue(`[TelegramDaemon] Working in project: ${activeProject.projectName} (${env.TARGET_PROJECT_DIR})`));
-        }
+      const activeProject = getActiveSession(chatId);
+      const projectPath = activeProject ? activeProject.projectPath : process.cwd();
 
-        // Daftarkan Telegram Bridge jika pipeline berjalan dalam mode ask
-        if (getActiveMode() === 'ask') {
-          const bridge = new TelegramHITLBridge(bot, chatId);
-          setConfirmationBridge(bridge);
-        }
+      await executionContext.run({ projectPath, logger: loggerFn }, async () => {
+        try {
+          log(`\n[TelegramDaemon] Menjalankan pipeline untuk: "${text.substring(0, 80)}..."`);
+          
+          if (activeProject) {
+            log(`[TelegramDaemon] Working in project: ${activeProject.projectName} (${projectPath})`);
+          }
 
-        await runAutonomousLoop(text, false, false);
-        await sendLogs(); // Flush sisa log
-        await bot.sendMessage(chatId, '🎉 *Pipeline selesai!* Codebase telah diperbarui oleh Ceobe.', { parse_mode: 'Markdown' });
-      } catch (err: unknown) {
-        await sendLogs();
-        const msg = err instanceof Error ? err.message : String(err);
-        await bot.sendMessage(chatId, `❌ *Pipeline gagal.*\n\`\`\`\n${truncate(msg, 1000)}\n\`\`\``, { parse_mode: 'Markdown' });
-      } finally {
-        console.log = originalLog; // Restore console.log
-        clearConfirmationBridge(); // Bersihkan bridge setelah loop selesai
-      }
+          // Daftarkan Telegram Bridge jika pipeline berjalan dalam mode ask
+          if (getActiveMode() === 'ask') {
+            const bridge = new TelegramHITLBridge(bot, chatId);
+            setConfirmationBridge(bridge);
+          }
+
+          await runAutonomousLoop(text, getActiveMode() === 'ask', false);
+          await sendLogs(); // Flush sisa log
+          await bot.sendMessage(chatId, '🎉 *Pipeline selesai!* Codebase telah diperbarui oleh Ceobe.', { parse_mode: 'Markdown' });
+        } catch (err: unknown) {
+          await sendLogs();
+          const msg = err instanceof Error ? err.message : String(err);
+          await bot.sendMessage(chatId, `❌ *Pipeline gagal.*\n\`\`\`\n${truncate(msg, 1000)}\n\`\`\``, { parse_mode: 'Markdown' });
+        } finally {
+          clearConfirmationBridge(); // Bersihkan bridge setelah loop selesai
+        }
+      });
     });
   });
 

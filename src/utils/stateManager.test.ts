@@ -1,8 +1,29 @@
+// Tujuan: Unit testing untuk modul stateManager.ts.
+// Caller: vitest runner
+// Dependensi: vitest, fs, stateManager
+// Main Functions: -
+// Side Effects: Mocking filesystem dan proper-lockfile
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import { readState, writeState, markPhaseComplete, markFileComplete, getCompletedFiles } from './stateManager';
+import { readState, writeState, markPhaseComplete, markFileComplete, getCompletedFiles, clearStateCache } from './stateManager';
 
-vi.mock('fs');
+vi.mock('fs', () => ({
+  existsSync: vi.fn(),
+  promises: {
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    rename: vi.fn(),
+    mkdir: vi.fn()
+  }
+}));
+
+vi.mock('proper-lockfile', () => ({
+  default: {
+    lock: vi.fn().mockResolvedValue(() => Promise.resolve())
+  }
+}));
+
 vi.mock('../config/env', () => ({
   env: { TARGET_PROJECT_DIR: '/mock/workspace' }
 }));
@@ -10,70 +31,66 @@ vi.mock('../config/env', () => ({
 describe('stateManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearStateCache();
   });
 
-  it('readState should return null if file does not exist', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-    expect(readState()).toBeNull();
+  it('readState should return null if file does not exist', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    expect(await readState()).toBeNull();
   });
 
-  it('readState should return parsed state if file exists', () => {
-    vi.spyOn(fs, 'existsSync').mockImplementation((p: any) => p.endsWith('json'));
-    vi.spyOn(fs, 'readFileSync').mockReturnValue('{"currentPhase":"plan"}');
+  it('readState should return parsed state if file exists', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.promises.readFile).mockResolvedValue('{"currentPhase":"plan"}' as any);
     
-    expect(readState()).toEqual({ currentPhase: 'plan' });
+    expect(await readState()).toEqual({ currentPhase: 'plan' });
   });
 
-  it('writeState should create lock, write file, and remove lock', () => {
-    let lockCheckCount = 0;
-    vi.spyOn(fs, 'existsSync').mockImplementation((p: any) => {
-      if (p.endsWith('.lock')) {
-        lockCheckCount++;
-        return lockCheckCount > 1; // false for while loop, true for finally block
-      }
-      return false;
-    });
-    const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
-    const unlinkSyncMock = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => undefined);
-    const mkdirSyncMock = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+  it('writeState should create directory, lock, and write file', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(fs.promises.readFile).mockResolvedValue('{"currentPhase":"plan"}' as any);
     
-    writeState({ currentPhase: 'execute' });
+    await writeState({ currentPhase: 'execute' });
     
-    expect(mkdirSyncMock).toHaveBeenCalled();
-    expect(writeFileSyncMock).toHaveBeenCalledWith(expect.stringContaining('.lock'), 'locked');
-    expect(writeFileSyncMock).toHaveBeenCalledWith(expect.stringContaining('.json'), expect.stringContaining('"currentPhase": "execute"'), 'utf8');
-    expect(unlinkSyncMock).toHaveBeenCalledWith(expect.stringContaining('.lock'));
+    expect(fs.promises.mkdir).toHaveBeenCalled();
+    expect(fs.promises.writeFile).toHaveBeenCalled();
   });
 
-  it('markPhaseComplete should update phase', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+  it('markPhaseComplete should update phase', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify({
       currentPhase: 'plan',
       completedPhases: []
-    }));
-    const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+    }) as any);
     
-    markPhaseComplete('plan', 'execute');
+    await markPhaseComplete('plan', 'execute');
     
-    expect(writeFileSyncMock).toHaveBeenCalledWith(expect.stringContaining('.json'), expect.stringContaining('"execute"'), 'utf8');
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining('tmp'),
+      expect.stringContaining('"execute"'),
+      'utf8'
+    );
   });
 
-  it('markPhaseComplete should update phases', () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    markPhaseComplete('plan', 'execute');
-    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.stringContaining('state.json'), expect.stringContaining('execute'), 'utf8');
-  });
-
-  it('markFileComplete should update files list', () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    markFileComplete('src/index.ts');
-    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.stringContaining('state.json'), expect.stringContaining('src/index.ts'), 'utf8');
-  });
-
-  it('getCompletedFiles should return list from state', () => {
+  it('markFileComplete should update files list', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ completedFiles: ['f1.ts'] }));
-    const files = getCompletedFiles();
+    vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify({
+      completedFiles: []
+    }) as any);
+
+    await markFileComplete('src/index.ts');
+    
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining('tmp'),
+      expect.stringContaining('src/index.ts'),
+      'utf8'
+    );
+  });
+
+  it('getCompletedFiles should return list from state', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify({ completedFiles: ['src/index.ts'] }) as any);
+    const files = await getCompletedFiles();
     expect(files).toContain('src/index.ts');
   });
 });

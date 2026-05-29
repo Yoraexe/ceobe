@@ -9,6 +9,7 @@ import * as path from 'path';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { env } from '../../config/env';
+import { getProjectDir } from '../../utils/context';
 import { searchEmbeddings } from '../memory/vectorStore';
 import { getEmbedding } from '../memory/indexer';
 import { executeBrowserInteraction } from '../../utils/browserAutomation';
@@ -23,7 +24,7 @@ export const activeBackgroundProcesses = new Map<string, ChildProcess>();
  * Detects the appropriate Docker image for the current project.
  */
 function detectProjectImage(): string {
-  const workspace = env.TARGET_PROJECT_DIR;
+  const workspace = getProjectDir();
   if (fs.existsSync(path.join(workspace, 'go.mod'))) return 'golang:1.24-alpine';
   if (fs.existsSync(path.join(workspace, 'Cargo.toml'))) return 'rust:1.82-slim';
   if (fs.existsSync(path.join(workspace, 'requirements.txt')) || fs.existsSync(path.join(workspace, 'pyproject.toml'))) return 'python:3.13-slim';
@@ -36,7 +37,7 @@ function detectProjectImage(): string {
 function wrapInSandbox(cmd: string): string {
   if (env.CEOBE_SANDBOX !== 'docker') return cmd;
   const image = detectProjectImage();
-  const workspace = env.TARGET_PROJECT_DIR.replace(/\\/g, '/');
+  const workspace = getProjectDir().replace(/\\/g, '/');
   // Mount workspace as /app, run command inside container
   return `docker run --rm -v "${workspace}":/app -w /app ${image} sh -c "${cmd.replace(/"/g, '\\"')}"`;
 }
@@ -295,11 +296,27 @@ export const tools = [
   }
 ];
 
+// Write Lock Map — prevents concurrent writes to the same file
+const writeLocks = new Map<string, Promise<void>>();
+
+async function acquireLock(filePath: string): Promise<() => void> {
+  const normPath = path.resolve(filePath);
+  const prev = writeLocks.get(normPath) ?? Promise.resolve();
+  let release = () => {};
+  const next = new Promise<void>((resolve) => { release = resolve; });
+  writeLocks.set(normPath, next);
+  await prev;
+  return () => {
+    if (writeLocks.get(normPath) === next) writeLocks.delete(normPath);
+    release();
+  };
+}
+
 function validatePath(filePath: string): string {
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(env.TARGET_PROJECT_DIR, filePath);
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(getProjectDir(), filePath);
   // Normalize both paths and convert to lowercase for case-insensitive comparison on Windows
   const normalizedPath = path.resolve(fullPath);
-  const workspaceRoot = path.resolve(env.TARGET_PROJECT_DIR);
+  const workspaceRoot = path.resolve(getProjectDir());
   
   // Case-insensitive check to prevent drive letter casing issues on Windows (e.g., C:\ vs c:\)
   if (!normalizedPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
@@ -353,13 +370,18 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
 
       case 'write_file': {
         const fullPath = validatePath(input.file_path);
-        const dir = path.dirname(fullPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
+        const releaseLock = await acquireLock(fullPath);
+        try {
+          const dir = path.dirname(fullPath);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          fs.writeFileSync(fullPath, input.content, 'utf8');
+          await markFileComplete(input.file_path);
+          return `Successfully wrote to ${fullPath}`;
+        } finally {
+          releaseLock();
         }
-        fs.writeFileSync(fullPath, input.content, 'utf8');
-        markFileComplete(input.file_path);
-        return `Successfully wrote to ${fullPath}`;
       }
 
       case 'execute_command': {
@@ -368,23 +390,24 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
           return `Error: Command blocked. For security reasons, Ceobe can only run specific whitelisted commands (e.g., npm, bun, go, docker, python, git). Raw shell interpreters or unauthorized chained commands are strictly prohibited.`;
         }
         
+        const truncateOutput = (s: string) => s.length > 5000 ? s.substring(s.length - 5000) + '\n...[TRUNCATED]' : s;
         try {
           const actualCmd = wrapInSandbox(cmd);
           const { stdout, stderr } = await execAsync(actualCmd, { 
-            cwd: env.TARGET_PROJECT_DIR,
+            cwd: getProjectDir(),
             timeout: 120000 // 120s timeout (Docker may need longer)
           });
-          const truncate = (s: string) => s.length > 5000 ? s.substring(s.length - 5000) + '\n...[TRUNCATED]' : s;
+          
           let result = '';
-          if (stdout) result += `STDOUT:\n${truncate(stdout)}\n`;
-          if (stderr) result += `STDERR:\n${truncate(stderr)}\n`;
+          if (stdout) result += `STDOUT:\n${truncateOutput(stdout)}\n`;
+          if (stderr) result += `STDERR:\n${truncateOutput(stderr)}\n`;
           return result || 'Command executed successfully with no output.';
         } catch (execErr: unknown) {
-          const truncate = (s: string) => s.length > 5000 ? s.substring(s.length - 5000) + '\n...[TRUNCATED]' : s;
+          
           const msg = execErr instanceof Error ? execErr.message : String(execErr);
           const out = (execErr as { stdout?: string }).stdout || '';
           const err = (execErr as { stderr?: string }).stderr || '';
-          return `Command failed:\n${msg}\nSTDOUT:\n${truncate(out)}\nSTDERR:\n${truncate(err)}`;
+          return `Command failed:\n${msg}\nSTDOUT:\n${truncateOutput(out)}\nSTDERR:\n${truncateOutput(err)}`;
         }
       }
 
@@ -401,7 +424,7 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
         const actualCmd = wrapInSandbox(cmd);
         
         const child = spawn(actualCmd, { 
-          cwd: env.TARGET_PROJECT_DIR,
+          cwd: getProjectDir(),
           shell: true,
           detached: false // Important: if Ceobe dies, the child dies
         });
@@ -436,35 +459,40 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
           return `Error: File not found at ${fullPath}`;
         }
         
-        let content = fs.readFileSync(fullPath, 'utf8');
-        const target = String(input.target_content);
-        const replacement = String(input.replacement_content);
-        
-        if (!content.includes(target)) {
-          // Fallback: try whitespace-insensitive regex match
-          try {
-            const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regexTarget = escapedTarget.replace(/\s+/g, '\\s+');
-            const regex = new RegExp(regexTarget);
-            const match = content.match(regex);
-            
-            if (match && match.index !== undefined) {
-              content = content.substring(0, match.index) + replacement + content.substring(match.index + match[0].length);
-              fs.writeFileSync(fullPath, content, 'utf8');
-              markFileComplete(input.file_path);
-              return `Successfully edited ${fullPath} (using whitespace-normalized fallback)`;
+        const releaseLock = await acquireLock(fullPath);
+        try {
+          let content = fs.readFileSync(fullPath, 'utf8');
+          const target = String(input.target_content);
+          const replacement = String(input.replacement_content);
+          
+          if (!content.includes(target)) {
+            // Fallback: try whitespace-insensitive regex match
+            try {
+              const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regexTarget = escapedTarget.replace(/\s+/g, '\\s+');
+              const regex = new RegExp(regexTarget);
+              const match = content.match(regex);
+              
+              if (match && match.index !== undefined) {
+                content = content.substring(0, match.index) + replacement + content.substring(match.index + match[0].length);
+                fs.writeFileSync(fullPath, content, 'utf8');
+                await markFileComplete(input.file_path);
+                return `Successfully edited ${fullPath} (using whitespace-normalized fallback)`;
+              }
+            } catch(e) {
+              // Regex compilation or match failed, fallback to strict error below
             }
-          } catch(e) {
-            // Regex compilation or match failed, fallback to strict error below
+            
+            return `Error: target_content not found in the file. Exact match and whitespace fallback failed.\nEnsure that the text you provided matches the file content.\nHint: use read_file to check the exact lines you want to replace.`;
           }
           
-          return `Error: target_content not found in the file. Exact match and whitespace fallback failed.\nEnsure that the text you provided matches the file content.\nHint: use read_file to check the exact lines you want to replace.`;
+          content = content.replaceAll(target, replacement);
+          fs.writeFileSync(fullPath, content, 'utf8');
+          await markFileComplete(input.file_path);
+          return `Successfully edited ${fullPath}`;
+        } finally {
+          releaseLock();
         }
-        
-        content = content.replaceAll(target, replacement);
-        fs.writeFileSync(fullPath, content, 'utf8');
-        markFileComplete(input.file_path);
-        return `Successfully edited ${fullPath}`;
       }
 
       case 'rename_file': {

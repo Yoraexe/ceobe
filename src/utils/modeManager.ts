@@ -1,3 +1,4 @@
+import { getProjectDir } from './context';
 // Module: src/utils/modeManager.ts
 // Purpose: Manages Ceobe's active operation mode (autonomous or ask).
 //          Mode is persisted in .ceobe/config.json inside the target project.
@@ -9,7 +10,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
-import { env } from '../config/env';
+
+
 import chalk from 'chalk';
 
 // ─────────────────────────────────────────────
@@ -60,7 +62,7 @@ export const SENSITIVE_TOOLS = new Set([
 // ─────────────────────────────────────────────
 
 function getConfigPath(): string {
-  return path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'config.json');
+  return path.join(getProjectDir(), '.ceobe', 'config.json');
 }
 
 // ─────────────────────────────────────────────

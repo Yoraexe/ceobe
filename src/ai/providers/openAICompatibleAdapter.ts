@@ -142,12 +142,18 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
 
     if (choice.message.tool_calls) {
       for (const tc of choice.message.tool_calls as Array<{ id: string, function: { name: string, arguments: string } }>) {
-        content.push({
-          type: 'tool_use',
-          id: tc.id,
-          name: tc.function.name,
-          input: JSON.parse((tc.function.arguments) || '{}'),
-        });
+          let parsedInput = {};
+          try {
+            parsedInput = JSON.parse(tc.function.arguments || '{}');
+          } catch (e) {
+            parsedInput = {};
+          }
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input: parsedInput,
+          });
       }
     }
 

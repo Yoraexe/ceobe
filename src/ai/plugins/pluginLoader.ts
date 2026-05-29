@@ -1,3 +1,4 @@
+import { log } from '../../utils/context';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
@@ -29,7 +30,7 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
   
   if (pluginFiles.length === 0) return [];
 
-  console.log(chalk.blue(`[PluginLoader] Ditemukan ${pluginFiles.length} file plugin di .ceobe/plugins/`));
+  log(chalk.blue(`[PluginLoader] Ditemukan ${pluginFiles.length} file plugin di .ceobe/plugins/`));
 
   // Ensure tsx is registered if we need to load .ts files
   const hasTs = pluginFiles.some(f => f.endsWith('.ts'));
@@ -57,7 +58,7 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
       const plugin: PluginDefinition = module.default || module;
 
       if (!validatePlugin(plugin)) {
-        console.log(chalk.yellow(`[PluginLoader] Plugin ${file} tidak valid (missing name, description, input_schema, or handler).`));
+        log(chalk.yellow(`[PluginLoader] Plugin ${file} tidak valid (missing name, description, input_schema, or handler).`));
         continue;
       }
 
@@ -69,10 +70,10 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
         input_schema: plugin.input_schema
       });
       
-      console.log(chalk.green(`[PluginLoader] ✅ Plugin '${plugin.name}' berhasil dimuat.`));
+      log(chalk.green(`[PluginLoader] ✅ Plugin '${plugin.name}' berhasil dimuat.`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(chalk.red(`[PluginLoader] Gagal memuat plugin ${file}: ${msg}`));
+      log(chalk.red(`[PluginLoader] Gagal memuat plugin ${file}: ${msg}`));
     }
   }
 
