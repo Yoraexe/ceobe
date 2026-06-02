@@ -69,13 +69,13 @@ describe('planner', () => {
 
   it('auditPlan should return true if approved', async () => {
     mockGenerate.mockResolvedValueOnce('APPROVED');
-    const result = await auditPlan('test');
+    const result = await auditPlan('test', '');
     expect(result.passed).toBe(true);
   });
 
   it('auditPlan should return false and feedback if not approved', async () => {
     mockGenerate.mockResolvedValueOnce('Issues found');
-    const result = await auditPlan('test');
+    const result = await auditPlan('test', '');
     expect(result.passed).toBe(false);
     expect(result.feedback).toBe('Issues found');
   });

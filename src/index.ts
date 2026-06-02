@@ -244,7 +244,7 @@ program
 
       const briefDescription = fs.readFileSync(brdPath, 'utf8').substring(0, 500);
       const selectedSkills = await selectRelevantSkills(briefDescription);
-      const result = await auditPlan(combinedContent, selectedSkills);
+      const result = await auditPlan(combinedContent, '', selectedSkills);
 
       if (result.passed) {
         await markPhaseComplete('audit', 'execute');
@@ -580,13 +580,29 @@ keyCmd
     ceobe key set qa-model gemini-2.5-flash
 `)
   .action((provider: string, value: string) => {
-    const def = findKeyDef(provider);
+    let def = findKeyDef(provider);
+    
+    // Fallback: Izinkan custom key (seperti planner-base-url atau opencode-api-key)
+    if (!def && (provider.includes('api-key') || provider.includes('base-url') || provider.includes('provider') || provider.includes('model'))) {
+      let envKey = provider.toUpperCase().replace(/-/g, '_');
+      if ((envKey.includes('PLANNER') || envKey.includes('EXECUTOR') || envKey.includes('QA')) && !envKey.startsWith('CEOBE_')) {
+        envKey = `CEOBE_${envKey}`;
+      }
+      def = {
+        envKey,
+        provider,
+        label: `Custom Configuration (${provider})`,
+        required: false,
+        docsUrl: 'N/A'
+      };
+    }
+
     if (!def) {
       const available = KEY_DEFINITIONS.map(d => d.provider).join(', ');
       printError(
-        `Provider '${provider}' tidak dikenali`,
-        `Provider yang tersedia: ${available}`,
-        `ceobe key set <provider> <value>`
+        `Provider atau key '${provider}' tidak dikenali.`,
+        `Gunakan akhiran -api-key atau -base-url untuk custom config.\nProvider bawaan: ${available}`,
+        `ceobe key set <provider-api-key> <value>`
       );
       process.exit(1);
     }

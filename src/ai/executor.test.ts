@@ -33,8 +33,9 @@ describe('executor', () => {
 
   it('executePlan should execute plan and stop when no tools are called', async () => {
     const chatMock = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'Task completed' }],
-      stop_reason: 'end_turn',
+      content: [{ type: 'tool_use', id: 'f1', name: 'finish_task', input: {} }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 10, output_tokens: 10 }
     });
 
     (createExecutorAdapter as any).mockReturnValue({
@@ -56,10 +57,12 @@ describe('executor', () => {
           { type: 'tool_use', id: 'tool1', name: 'read_file', input: { file_path: 'test.ts' } },
         ],
         stop_reason: 'tool_use',
+        usage: { input_tokens: 10, output_tokens: 10 }
       })
       .mockResolvedValueOnce({
-        content: [{ type: 'text', text: 'Done' }],
-        stop_reason: 'end_turn',
+        content: [{ type: 'tool_use', id: 'f2', name: 'finish_task', input: {} }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 10, output_tokens: 10 }
       });
 
     (createExecutorAdapter as any).mockReturnValue({

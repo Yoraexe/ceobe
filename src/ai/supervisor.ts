@@ -1,9 +1,9 @@
 // Tujuan: Mengorkestrasi seluruh siklus agen dari Perencanaan hingga Eksekusi secara otonom.
 // Caller: src/index.ts (via command `auto`)
-// Dependensi: planner, executor, stateManager, gitManager, taskParser, fs, readline
-// Main Functions: runAutonomousLoop
+// Dependensi: planner, executor, stateManager, gitManager, taskParser, crypto, fs, readline, costTracker, indexer, systemTools
+// Main Functions: runAutonomousLoop, computeChangedDocs, getDocHash
 // Side Effects: Read/write .ceobe/ files, invoke API, execute commands, prompt user.
-// v1.7.0: Multi-Agent Parallel Execution — task plan dipecah menjadi gelombang eksekusi.
+// v1.9.0: Multi-Agent Parallel Execution & Hash Convergence Guard (SHA-256 document tracking).
 //         Task independen dalam satu gelombang dieksekusi secara paralel.
 
 import * as fs from 'fs';
@@ -18,10 +18,40 @@ import { indexWorkspace } from './memory/indexer';
 import { activeBackgroundProcesses } from './tools/systemTools';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as crypto from 'crypto';
 import { createSnapshot, rollbackToSnapshot } from '../utils/gitManager';
 import { parseTaskWaves } from './taskParser';
 import { resetSession, printCostSummary } from '../utils/costTracker';
 import type { NormalizedContentBlock } from './providers/types';
+
+interface DocSnapshot {
+  hash: string;
+  timestamp: number;
+  version: number;
+}
+const snapshots = new Map<string, DocSnapshot>();
+
+export function getDocHash(content: string): string {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+export function computeChangedDocs(currentDocs: Record<string, string>, reset: boolean = false): string[] {
+  if (reset) snapshots.clear();
+  const changed: string[] = [];
+  for (const [docName, content] of Object.entries(currentDocs)) {
+    const currentHash = getDocHash(content);
+    const prev = snapshots.get(docName);
+    if (!prev || prev.hash !== currentHash) {
+      changed.push(docName);
+      snapshots.set(docName, {
+        hash: currentHash,
+        timestamp: Date.now(),
+        version: (prev?.version ?? 0) + 1
+      });
+    }
+  }
+  return changed;
+}
 
 const execAsync = promisify(exec);
 
@@ -43,6 +73,7 @@ function askUserConfirmation(question: string): Promise<boolean> {
 
 export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
   resetSession();
+  computeChangedDocs({}, true); // C1: Reset hash registry for new session
   log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
   
   const ceobeDir = path.join(getProjectDir(), '.ceobe');
@@ -90,11 +121,13 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
       if (fs.existsSync(archPath)) arch = fs.readFileSync(archPath, 'utf8');
       if (fs.existsSync(taskPath)) task = fs.readFileSync(taskPath, 'utf8');
       if (fs.existsSync(devopsPath)) devops = fs.readFileSync(devopsPath, 'utf8');
+      // C2: Seed snapshot registry so convergence guard has a baseline
+      computeChangedDocs({ brd, design, arch, devops, task });
     }
 
     if (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit') {
-      let regenBRD = true;
-      let regenDesign = true;
+      let regenBRD = startingPhase === 'plan';
+      let regenDesign = startingPhase === 'plan' || startingPhase === 'design';
       let regenArch = true;
       let regenDevops = true;
       let regenTask = true;
@@ -117,13 +150,11 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
           brd = await generateBRD(description, selectedSkills, feedback);
           fs.writeFileSync(brdPath, brd);
         }
-        await markPhaseComplete(isFeature ? 'build-feature' : 'plan', 'design');
 
         if (regenDesign) {
           design = await generateDesignSpec(brd, selectedSkills, feedback);
           fs.writeFileSync(designPath, design);
         }
-        await markPhaseComplete('design', 'audit');
 
         if (regenArch) {
           arch = await generateArchitecture(brd, design, selectedSkills, feedback);
@@ -140,12 +171,44 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
           task = await generateImplementationPlan(arch, selectedSkills, feedback);
           fs.writeFileSync(taskPath, task);
         }
+        
+        await markPhaseComplete('design', 'audit'); // Mark phase complete after successful planning
+
+        // Hash Validation & Convergence Guard
+        const currentDocs = { brd, design, arch, devops, task };
+        // C3: Only check convergence on documents that were actually regenerated
+        const regenFilter: Record<string, boolean> = { brd: regenBRD, design: regenDesign, arch: regenArch, devops: regenDevops, task: regenTask };
+        const docsToCheck = Object.fromEntries(
+          Object.entries(currentDocs).filter(([k]) => regenFilter[k])
+        );
+        const changedDocs = computeChangedDocs(docsToCheck);
+        
+        if (changedDocs.length === 0) {
+          log(chalk.green(`\n[Supervisor] Convergence Reached! No documents were modified by the Planner in this iteration.`));
+          log(chalk.green(`[Supervisor] Implicitly passing QA Audit to prevent infinite loop.`));
+          isAuditPassed = true;
+          break; // Stop loop!
+        }
 
         // Step 2: Audit
         log(chalk.blue(`\n[Supervisor] Submitting plans to Quality Assurance Auditor...`));
+        
+        // Full Context to maximize Anthropic Prefix Caching
         const combinedContent = `\n--- BRD ---\n${brd}\n--- DESIGN ---\n${design}\n--- ARCHITECTURE ---\n${arch}\n--- DEVOPS ---\n${devops}\n--- TASK PLAN ---\n${task}\n`;
         
-        const auditResult = await auditPlan(combinedContent, selectedSkills);
+        // Dynamic Alert placed safely at the end
+        let dynamicAlert = '';
+        if (retryCount > 0) {
+           dynamicAlert = `\n[SYSTEM ALERT - Revision ${retryCount}]
+In this revision cycle, the Planner ONLY modified the following documents: [${changedDocs.join(', ')}].
+All other documents remain unchanged and are provided for reference.
+Please focus your audit on checking whether the changes in [${changedDocs.join(', ')}] have successfully resolved the previous feedback without introducing contradictions to the unchanged documents.
+Previous Feedback:
+${feedback}
+`.trim();
+        }
+        
+        const auditResult = await auditPlan(combinedContent, dynamicAlert, selectedSkills);
         
         if (auditResult.passed) {
           isAuditPassed = true;
@@ -234,8 +297,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
               wave.tasks.map(waveTask =>
                 executePlan(
                   waveTask.content + (execFeedback ? `\n\n[FIX ERRORS]\n${execFeedback}` : ''),
-                  arch,
-                  design
+                  selectedSkills
                 )
               )
             );
@@ -253,7 +315,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
           } else {
             // Single task in wave — run sequentially as before
             log(chalk.blue(`\n[Parallel Executor] Gelombang ${wave.wave} — 1 task (sequential).`));
-            await executePlan(wave.tasks[0].content, arch, design);
+            await executePlan(wave.tasks[0].content, selectedSkills);
           }
         }
         // ───────────────────────────────────────────────────────────────────────
@@ -385,7 +447,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
     if (activeBackgroundProcesses.size > 0) {
        log(chalk.yellow(`\n[Supervisor] Cleaning up ${activeBackgroundProcesses.size} background processes...`));
        for (const [id, child] of activeBackgroundProcesses.entries()) {
-          child.kill('SIGKILL');
+          child.kill(); // Default to SIGTERM for cross-platform compatibility
           activeBackgroundProcesses.delete(id);
        }
     }

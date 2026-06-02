@@ -21,6 +21,7 @@ export interface NormalizedContentBlock {
   tool_use_id?: string;
   text?: string;
   content?: string | any[];
+  cache_control?: boolean;
   // For multimodal
   source?: {
     type: 'base64';

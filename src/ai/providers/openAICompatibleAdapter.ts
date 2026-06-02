@@ -104,11 +104,15 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
     this.client = new OpenAI({ apiKey, baseURL });
   }
 
-  async generate(prompt: string, temperature: number = 0.2): Promise<string> {
+  async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<string> {
+    const contentStr = typeof prompt === 'string'
+      ? prompt
+      : prompt.filter(b => b.type === 'text').map(b => b.text).join('\n');
+
     const response = await withRetry(() =>
       this.client.chat.completions.create({
         model: this.modelId,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: contentStr }],
         temperature,
       })
     );

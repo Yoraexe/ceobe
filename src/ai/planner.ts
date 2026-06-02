@@ -1,7 +1,7 @@
 // Tujuan: Mengatur seluruh fase perencanaan (BRD, Design, Architecture, Tasks, DevOps, Audit).
 // Caller: src/index.ts, src/ai/supervisor.ts
 // Dependensi: providers/router, contextLoader, chalk, ora
-// Main Functions: selectRelevantSkills, generateBRD, generateDesign, generateArchitecture, generateTasks, generateDevOps, auditPlan
+// Main Functions: selectRelevantSkills, generateBRD, generateDesignSpec, generateArchitecture, generateImplementationPlan, generateDevOpsConfig, auditPlan
 // Side Effects: Mengirim permintaan API ke provider AI (planner dan qa)
 // v1.0.0: Perencanaan Modular dengan Skill Router.
 
@@ -345,6 +345,7 @@ export interface AuditResult {
 
 export async function auditPlan(
   combinedContent: string,
+  dynamicAlert: string,
   selectedSkills: string[] = []
 ): Promise<AuditResult> {
   // ⚠️  CRITICAL: Always use the QA auditor, NOT the planner.
@@ -390,7 +391,14 @@ At the very end of your response, you MUST include a JSON block indicating which
 \`\`\`
 `;
 
-    const output = await adapter.generate(prompt, 0.1);
+    const promptBlocks: NormalizedContentBlock[] = [
+      { type: 'text', text: prompt, cache_control: true } as any
+    ];
+    if (dynamicAlert) {
+      promptBlocks.push({ type: 'text', text: dynamicAlert });
+    }
+
+    const output = await adapter.generate(promptBlocks, 0.1);
     const isApproved = output.trim().toUpperCase() === 'APPROVED';
     if (isApproved) {
       spinner.succeed(chalk.green(`${tag} Audit PASSED. Blueprint is ready for execution.`));

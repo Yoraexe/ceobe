@@ -30,12 +30,22 @@ export class AnthropicAdapter implements IProviderAdapter {
   }
 
   async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<string> {
+    const isArray = Array.isArray(prompt);
+    const hasExplicitCache = isArray && (prompt as NormalizedContentBlock[]).some(b => b.cache_control);
+
     const content = typeof prompt === 'string' 
-      ? prompt 
-      : (prompt as any[]).map(block => {
-          if (block.type === 'text') return { type: 'text', text: block.text };
+      ? [
+          { 
+            type: 'text', 
+            text: prompt, 
+            cache_control: prompt.length > 2000 ? { type: 'ephemeral' } : undefined 
+          }
+        ] 
+      : (prompt as any[]).map((block, index) => {
+          let outBlock: any = { type: 'text', text: '' };
+          if (block.type === 'text') outBlock = { type: 'text', text: block.text };
           if (block.type === 'image' && block.source) {
-            return {
+            outBlock = {
               type: 'image',
               source: {
                 type: 'base64',
@@ -44,7 +54,16 @@ export class AnthropicAdapter implements IProviderAdapter {
               }
             };
           }
-          return { type: 'text', text: '' };
+          
+          if (hasExplicitCache) {
+             if (block.cache_control) outBlock.cache_control = { type: 'ephemeral' };
+          } else {
+             // Default: Put cache control on the last block
+             if (index === (prompt as any[]).length - 1) {
+                outBlock.cache_control = { type: 'ephemeral' };
+             }
+          }
+          return outBlock;
         });
 
     const response = await withRetry(() =>
@@ -64,13 +83,39 @@ export class AnthropicAdapter implements IProviderAdapter {
     tools: NormalizedTool[],
     systemInstruction: string
   ): Promise<NormalizedResponse> {
+    
+    // Inject cache_control into system prompt
+    const system = [
+      {
+        type: 'text',
+        text: systemInstruction,
+        cache_control: { type: 'ephemeral' }
+      }
+    ] as any;
+
+    // Inject cache_control into the very last user message to cache history up to that point
+    const anthropicMessages = messages.map(m => {
+       const content = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content;
+       return { role: m.role, content: JSON.parse(JSON.stringify(content)) };
+    }) as any[];
+    
+    for (let i = anthropicMessages.length - 1; i >= 0; i--) {
+       if (anthropicMessages[i].role === 'user') {
+          const contentArray = anthropicMessages[i].content;
+          if (Array.isArray(contentArray) && contentArray.length > 0) {
+             contentArray[contentArray.length - 1].cache_control = { type: 'ephemeral' };
+          }
+          break;
+       }
+    }
+
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.modelId,
         max_tokens: 8192,
         temperature: 0,
-        system: systemInstruction,
-        messages: messages as Anthropic.MessageParam[],
+        system: system,
+        messages: anthropicMessages as Anthropic.MessageParam[],
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,

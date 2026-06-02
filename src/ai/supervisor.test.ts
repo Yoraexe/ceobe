@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as planner from './planner';
 import * as executor from './executor';
-import { runAutonomousLoop } from './supervisor';
+import { runAutonomousLoop, computeChangedDocs } from './supervisor';
 
 vi.mock('fs');
 vi.mock('../config/env', () => ({
@@ -36,17 +36,20 @@ vi.spyOn(console, 'log').mockImplementation(() => {});
 vi.spyOn(console, 'error').mockImplementation(() => {});
 
 describe('supervisor', () => {
+  let c = 0;
   beforeEach(() => {
     vi.clearAllMocks();
+    c = 0;
+    computeChangedDocs({}, true);
   });
 
   it('should run successfully on first audit pass', async () => {
     vi.spyOn(planner, 'selectRelevantSkills').mockResolvedValue([]);
-    vi.spyOn(planner, 'generateBRD').mockResolvedValue('brd');
-    vi.spyOn(planner, 'generateDesignSpec').mockResolvedValue('design');
-    vi.spyOn(planner, 'generateArchitecture').mockResolvedValue('arch');
-    vi.spyOn(planner, 'generateImplementationPlan').mockResolvedValue('task');
-    vi.spyOn(planner, 'generateDevOpsConfig').mockResolvedValue('devops');
+    vi.spyOn(planner, 'generateBRD').mockImplementation(async () => `brd${++c}`);
+    vi.spyOn(planner, 'generateDesignSpec').mockImplementation(async () => `design${++c}`);
+    vi.spyOn(planner, 'generateArchitecture').mockImplementation(async () => `arch${++c}`);
+    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `task${++c}`);
+    vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
     await runAutonomousLoop('test desc');
@@ -54,17 +57,17 @@ describe('supervisor', () => {
     expect(planner.generateBRD).toHaveBeenCalledTimes(1);
     expect(planner.generateDesignSpec).toHaveBeenCalledTimes(1);
     expect(executor.executePlan).toHaveBeenCalledTimes(1);
-    expect(executor.executePlan).toHaveBeenCalledWith('task\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\ndevops', 'arch', 'design');
+    expect(executor.executePlan).toHaveBeenCalledWith('task5\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\ndevops4', []);
     expect(planner.generateDevOpsConfig).toHaveBeenCalledTimes(1);
   });
 
   it('should retry if audit fails and eventually pass', async () => {
     vi.spyOn(planner, 'selectRelevantSkills').mockResolvedValue([]);
-    vi.spyOn(planner, 'generateBRD').mockResolvedValue('brd');
-    vi.spyOn(planner, 'generateDesignSpec').mockResolvedValue('design');
-    vi.spyOn(planner, 'generateArchitecture').mockResolvedValue('arch');
-    vi.spyOn(planner, 'generateImplementationPlan').mockResolvedValue('task');
-    vi.spyOn(planner, 'generateDevOpsConfig').mockResolvedValue('devops');
+    vi.spyOn(planner, 'generateBRD').mockImplementation(async () => `brd${++c}`);
+    vi.spyOn(planner, 'generateDesignSpec').mockImplementation(async () => `design${++c}`);
+    vi.spyOn(planner, 'generateArchitecture').mockImplementation(async () => `arch${++c}`);
+    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `task${++c}`);
+    vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     
     // Fail once, pass second time
     vi.spyOn(planner, 'auditPlan')
@@ -81,10 +84,11 @@ describe('supervisor', () => {
 
   it('should abort after MAX_RETRIES (3) failures', async () => {
     vi.spyOn(planner, 'selectRelevantSkills').mockResolvedValue([]);
-    vi.spyOn(planner, 'generateBRD').mockResolvedValue('brd');
-    vi.spyOn(planner, 'generateDesignSpec').mockResolvedValue('design');
-    vi.spyOn(planner, 'generateArchitecture').mockResolvedValue('arch');
-    vi.spyOn(planner, 'generateImplementationPlan').mockResolvedValue('task');
+    vi.spyOn(planner, 'generateBRD').mockImplementation(async () => `brd${++c}`);
+    vi.spyOn(planner, 'generateDesignSpec').mockImplementation(async () => `design${++c}`);
+    vi.spyOn(planner, 'generateArchitecture').mockImplementation(async () => `arch${++c}`);
+    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `task${++c}`);
+    vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     
     // Always fail
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: false, feedback: 'bad' });
@@ -98,11 +102,11 @@ describe('supervisor', () => {
 
   it('should ask for confirmation if askBeforeExecute is true and proceed if yes', async () => {
     vi.spyOn(planner, 'selectRelevantSkills').mockResolvedValue([]);
-    vi.spyOn(planner, 'generateBRD').mockResolvedValue('brd');
-    vi.spyOn(planner, 'generateDesignSpec').mockResolvedValue('design');
-    vi.spyOn(planner, 'generateArchitecture').mockResolvedValue('arch');
-    vi.spyOn(planner, 'generateImplementationPlan').mockResolvedValue('task');
-    vi.spyOn(planner, 'generateDevOpsConfig').mockResolvedValue('devops');
+    vi.spyOn(planner, 'generateBRD').mockImplementation(async () => `brd${++c}`);
+    vi.spyOn(planner, 'generateDesignSpec').mockImplementation(async () => `design${++c}`);
+    vi.spyOn(planner, 'generateArchitecture').mockImplementation(async () => `arch${++c}`);
+    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `task${++c}`);
+    vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
     mockQuestion.mockImplementation((_q, cb) => cb('y'));
@@ -115,10 +119,11 @@ describe('supervisor', () => {
 
   it('should ask for confirmation and abort if no', async () => {
     vi.spyOn(planner, 'selectRelevantSkills').mockResolvedValue([]);
-    vi.spyOn(planner, 'generateBRD').mockResolvedValue('brd');
-    vi.spyOn(planner, 'generateDesignSpec').mockResolvedValue('design');
-    vi.spyOn(planner, 'generateArchitecture').mockResolvedValue('arch');
-    vi.spyOn(planner, 'generateImplementationPlan').mockResolvedValue('task');
+    vi.spyOn(planner, 'generateBRD').mockImplementation(async () => `brd${++c}`);
+    vi.spyOn(planner, 'generateDesignSpec').mockImplementation(async () => `design${++c}`);
+    vi.spyOn(planner, 'generateArchitecture').mockImplementation(async () => `arch${++c}`);
+    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `task${++c}`);
+    vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
     mockQuestion.mockImplementation((_q, cb) => cb('n'));

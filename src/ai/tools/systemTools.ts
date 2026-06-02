@@ -64,9 +64,26 @@ export const tools = [
         file_path: {
           type: 'string',
           description: 'The absolute or relative path to the file to read. (e.g. src/index.ts or D:/path/to/file)'
+        },
+        start_line: {
+          type: 'number',
+          description: 'Optional. Start reading from this line number (1-indexed).'
+        },
+        end_line: {
+          type: 'number',
+          description: 'Optional. Stop reading at this line number (inclusive).'
         }
       },
       required: ['file_path']
+    }
+  },
+  {
+    name: 'finish_task',
+    description: 'Marks the current task as finished. Call this tool ONLY when you have fully completed the requested task, verified the results, and are ready to stop.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: []
     }
   },
   {
@@ -362,10 +379,26 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
           return `Error: File not found at ${fullPath}`;
         }
         const stats = fs.statSync(fullPath);
-        if (stats.size > 100000) { // ~100KB limit
-          return `Error: File is too large to read entirely (${stats.size} bytes). This would exceed your context window. Please use search_in_files or semantic_search to find what you need.`;
+        if (stats.size > 500000) { // Bump limit slightly but enforce pagination if large
+          return `Error: File is extremely large (${stats.size} bytes). Please use search_in_files or semantic_search.`;
         }
-        return fs.readFileSync(fullPath, 'utf8');
+        const content = fs.readFileSync(fullPath, 'utf8');
+        const start = input.start_line ? Math.max(1, Number(input.start_line)) : 1;
+        const end = input.end_line ? Number(input.end_line) : undefined;
+        
+        const lines = content.split('\n');
+        const finalEnd = end ? Math.min(end, lines.length) : lines.length;
+        
+        if (start > 1 || finalEnd < lines.length) {
+          const sliced = lines.slice(start - 1, finalEnd).join('\n');
+          return `[Showing lines ${start} to ${finalEnd} of ${lines.length}]\n${sliced}`;
+        }
+        
+        return content;
+      }
+
+      case 'finish_task': {
+        return `Task marked as finished. The execution engine will now stop.`;
       }
 
       case 'write_file': {

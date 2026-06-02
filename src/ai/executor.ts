@@ -1,6 +1,6 @@
 // Tujuan: Menjalankan agent loop berdasarkan rencana eksekusi menggunakan AI provider.
 // Caller: src/index.ts, src/ai/supervisor.ts
-// Dependensi: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path
+// Dependensi: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path, costTracker, retry, plugins/pluginLoader
 // Main Functions: executePlan, trimMessages
 // Side Effects: Mengirim permintaan API ke provider AI, memanggil perkakas sistem (I/O file/command)
 // v1.7.0: Self-Healing - autonomous retry on failed commands.
@@ -75,14 +75,14 @@ export function trimMessages(
 
 export async function executePlan(
   planMarkdown: string,
-  architecture: string = '',
-  design: string = ''
+  selectedSkills: string[] = []
 ): Promise<void> {
   const adapter = createExecutorAdapter();
   const spinner = ora(`${adapter.name.toUpperCase()} (${adapter.modelId}) is executing the plan...`).start();
 
   /** Tracks how many self-healing cycles have been used in this executePlan call. */
   let selfHealCount = 0;
+  let maxTokensRetries = 0;
 
   try {
     const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
@@ -95,7 +95,10 @@ export async function executePlan(
     };
 
     const dynamicTools = await loadDynamicTools(getProjectDir());
-    const finalTools = [...tools, ...dynamicTools];
+    const filteredDynamicTools = selectedSkills.length > 0 
+      ? dynamicTools.filter(t => selectedSkills.includes(t.name) || selectedSkills.some(s => t.name.includes(s)))
+      : dynamicTools;
+    const finalTools = [...tools, ...filteredDynamicTools].sort((a, b) => a.name.localeCompare(b.name));
 
     logExecution(`--- STARTED EXECUTION (provider: ${adapter.name}, model: ${adapter.modelId}) ---`);
 
@@ -104,14 +107,9 @@ You are the Execution Engine of the Ceobe AI System.
 Your task is to take the provided execution plan and strictly implement it.
 You have access to tool commands to read/write files and run terminal commands.
 DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
+When you are completely finished with the task, you MUST call the finish_task tool.
+If you need architectural or design context, use read_file to read .ceobe/architecture.md or .ceobe/design.md.
 `;
-
-    if (architecture) {
-      systemInstruction += `\n[ARCHITECTURE CONTEXT]\nAdhere to the following architecture strictly:\n${architecture}\n`;
-    }
-    if (design) {
-      systemInstruction += `\n[DESIGN CONTEXT]\nAdhere to the following design constraints:\n${design}\n`;
-    }
 
     let messages: NormalizedMessage[] = [
       {
@@ -153,11 +151,22 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
       const toolCalls = response.content.filter((c) => c.type === 'tool_use');
 
-      // Append the assistant's full response to history
-      messages.push({ role: 'assistant', content: response.content });
+      // Gap 2 Fix: CoT Preservation (Soft Truncation)
+      // Keep text blocks but truncate them to preserve Reasoning without bloat
+      const filteredContent = response.content.map(c => {
+        if (c.type === 'text' && 'text' in c && c.text) {
+           return { ...c, text: c.text.length > 1000 ? c.text.substring(0, 1000) + '\n...[Reasoning Truncated]...' : c.text };
+        }
+        return c;
+      });
+      messages.push({ role: 'assistant', content: filteredContent });
 
       // --- Token truncation recovery ---
       if (response.stop_reason === 'max_tokens') {
+        maxTokensRetries++;
+        if (maxTokensRetries > 3) {
+          throw new Error('Model repeatedly hitting max_tokens limit. Context may be too large.');
+        }
         if (toolCalls.length === 0) {
           logExecution('WARN: Hit max_tokens mid-text. Asking model to continue.');
           messages.push({
@@ -180,19 +189,21 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 
       // --- Agentic loop stop condition ---
       if (toolCalls.length === 0) {
-        isThinking = false;
-        spinner.succeed(
-          chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) execution complete.`)
-        );
-        log(chalk.cyan('\n--- Final Response ---\n'));
-        if (textBlock?.text) log(textBlock.text);
-        log(chalk.cyan('\n----------------------\n'));
+        logExecution('WARN: Model returned text without tools, but did not call finish_task. Asking it to use finish_task.');
+        messages.push({
+          role: 'user',
+          content: 'You did not call any tools. If you are done, you MUST call finish_task. Otherwise, continue working.',
+        });
+        continue;
       } else {
         // --- Execute tool calls and feed results back ---
         const toolResultBlocks: NormalizedContentBlock[] = [];
         const activeMode = getActiveMode();
+        
+        const hasFinishTask = toolCalls.some(t => t.name === 'finish_task');
+        const realTools = toolCalls.filter(t => t.name !== 'finish_task');
 
-        for (const block of toolCalls) {
+        for (const block of realTools) {
           if (block.type !== 'tool_use' || !block.name) continue;
 
           spinner.text = chalk.yellow(`[${adapter.name.toUpperCase()}] Executing tool: ${block.name}...`);
@@ -246,21 +257,36 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
             }
           }
 
-          logExecution(`TOOL_CALL: ${block.name} | Input: ${logInputStr}`);
+      logExecution(`TOOL_CALL: ${block.name} | Input: ${logInputStr}`);
 
           const resultPayload = await handleToolCall(block.name, block.input ?? {});
           
           // Support multimodal results (arrays of content blocks)
           let resultBlocks: any;
-          if (Array.isArray(resultPayload)) {
-            resultBlocks = resultPayload;
-          } else {
-            resultBlocks = typeof resultPayload === 'string'
-              ? resultPayload
-              : JSON.stringify(resultPayload);
+          let resultStr: string;
+
+          try {
+            if (Array.isArray(resultPayload)) {
+              resultBlocks = resultPayload;
+              resultStr = JSON.stringify(resultBlocks);
+            } else {
+              resultStr = String(resultPayload);
+              resultBlocks = resultStr;
+            }
+          } catch (toolErr: unknown) {
+            resultStr = String(toolErr);
+            resultBlocks = resultStr;
           }
 
-          const resultStr = typeof resultBlocks === 'string' ? resultBlocks : JSON.stringify(resultBlocks);
+          // Truncate massive outputs to prevent Context Limit Exceeded
+          if (resultStr.length > 8000) {
+            resultStr = resultStr.substring(0, 4000) + "\n\n...[TRUNCATED BY CEOBE]...\n\n" + resultStr.substring(resultStr.length - 4000);
+            if (!Array.isArray(resultPayload)) {
+              resultBlocks = resultStr;
+            } else {
+              resultBlocks = [{ type: 'text', text: resultStr }];
+            }
+          }
 
           // ── SELF-HEALING GATE ───────────────────────────────────────────────
           // When execute_command returns a failure, annotate the result so the
@@ -281,15 +307,24 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
               );
             }
 
-            // Augment the tool result with a mandatory fix directive.
-            const healDirective =
-              `\n\n⚠️  [SELF-HEAL DIRECTIVE — Cycle ${selfHealCount}/${MAX_SELF_HEAL}]\n` +
-              `The command above FAILED. You MUST:\n` +
-              `1. Read the error output carefully.\n` +
-              `2. Identify the root cause (syntax error, missing import, wrong path, etc.).\n` +
-              `3. Fix the offending file(s) using write_file or edit_file.\n` +
-              `4. Re-run the failed command to verify the fix.\n` +
-              `DO NOT skip this. DO NOT proceed to the next task until this command succeeds.`;
+            // Shortened self-heal directive to save tokens
+            const healDirective = `\n\n[SELF-HEAL ${selfHealCount}/${MAX_SELF_HEAL}] Command FAILED. Fix the error above and retry.`;
+
+            // Gap 3 Fix: Clean up old SELF-HEAL messages to prevent accumulation
+            messages = messages.map(msg => {
+              if (msg.role === 'user' && Array.isArray(msg.content)) {
+                return {
+                  ...msg,
+                  content: msg.content.map((c: any) => {
+                    if (c.type === 'tool_result' && typeof c.content === 'string') {
+                       return { ...c, content: c.content.replace(/\[SELF-HEAL \d+\/\d+\].*/g, '[Older Self-Heal Omitted]') };
+                    }
+                    return c;
+                  })
+                };
+              }
+              return msg;
+            });
 
             resultBlocks = resultStr + healDirective;
           }
@@ -313,8 +348,18 @@ DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
             content: resultBlocks,
           });
         }
+        
+        if (hasFinishTask) {
+           isThinking = false;
+           spinner.succeed(chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) called finish_task. Execution complete.`));
+           log(chalk.cyan('\n--- Final Response ---\n'));
+           if (textBlock?.text) log(textBlock.text);
+           log(chalk.cyan('\n----------------------\n'));
+        }
 
-        messages.push({ role: 'user', content: toolResultBlocks });
+        if (toolResultBlocks.length > 0) {
+          messages.push({ role: 'user', content: toolResultBlocks });
+        }
       }
       
       // Enforce Budget Limit (if set)
