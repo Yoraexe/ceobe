@@ -10,9 +10,8 @@ import { getProjectDir } from '../utils/context';
 import chalk from 'chalk';
 import * as path from 'path';
 
-
-
-const VERSION = '1.9.0';
+export const APP_NAME = 'Ceobe Mastery CLI';
+export const VERSION = '1.11.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
@@ -46,7 +45,7 @@ export function printBanner(): void {
   console.log('');
   console.log(
     chalk.gray('  Autonomous AI Engineering Orchestrator') +
-    chalk.dim(` · v${VERSION}`)
+    chalk.dim(` · v${VERSION} [V3 Engine]`)
   );
   console.log(
     chalk.dim(`  🧠 Planner: ${plannerDisplay}`) +
