@@ -300,7 +300,8 @@ program
         info('DevOps config ditemukan dan disertakan.');
       }
 
-      await executePlan(planContent);
+      const selectedSkills = await selectRelevantSkills(planContent);
+      await executePlan(planContent, selectedSkills);
       await markPhaseComplete('execute', 'done');
 
       printSection('🎉 Eksekusi Selesai!');
