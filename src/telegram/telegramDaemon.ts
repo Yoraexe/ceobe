@@ -36,11 +36,11 @@ function truncate(str: string, max: number): string {
 
 export function startTelegramDaemon(): void {
   const keys = readAllKeys();
-  const token = keys.TELEGRAM_TOKEN || process.env.TELEGRAM_TOKEN || '';
+  const token = keys.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '';
   const allowedRaw = keys.TELEGRAM_ALLOWED_USERS || process.env.TELEGRAM_ALLOWED_USERS || '';
 
   if (!token) {
-    console.error(chalk.red('\n[TelegramDaemon] Gagal: TELEGRAM_TOKEN belum dikonfigurasi.'));
+    console.error(chalk.red('\n[TelegramDaemon] Gagal: TELEGRAM_BOT_TOKEN belum dikonfigurasi.'));
     console.error(chalk.yellow('  Jalankan: ceobe key set telegram-token <token>'));
     process.exit(1);
   }

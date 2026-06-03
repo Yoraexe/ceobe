@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 
 export const APP_NAME = 'Ceobe Mastery CLI';
-export const VERSION = '1.11.3';
+export const VERSION = '1.11.4';
 
 // ─────────────────────────────────────────────────────────────
 // Banner

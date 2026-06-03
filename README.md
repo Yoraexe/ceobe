@@ -8,7 +8,7 @@ Ceobe now utilizes a **Three Brain Pattern** to prevent AI hallucinations and el
 2. **QA Auditor (The Independent Reviewer)**: Strictly reviews the Planner's blueprint for logic gaps and contradictions *before* any code is written.
 3. **Executor (The Programmer)**: Follows the validated blueprint to write the code. Best paired with fast/cheap models (e.g., Gemini 2.5 Flash, GLM, or Llama 3).
 
-## ⚡ Features (v1.11.3 V3 Engine)
+## ⚡ Features (v1.11.4 V3 Engine)
 - **🔥 Hash Convergence Guard (V3 New):** Infinite-loop protection! Supervisor tracks document state via SHA-256 hashes and gracefully skips QA audits if no documents were changed, saving thousands of tokens and eliminating loop traps.
 - **🛡️ Token Bleed Protection (V3 New):** Executor now detects `max_tokens` exhaustion and breaks loops safely after 3 retries, preventing run-away token burn.
 - **🎯 Dynamic Tool Injection (V3 New):** The system intelligently parses your task and *only* injects the required LLM skills/tools into the prompt, resulting in massive Input Token reduction.
