@@ -1,4 +1,4 @@
-import { getProjectDir } from './context';
+import { getProjectDir, executionContext } from './context';
 // Module: src/utils/modeManager.ts
 // Purpose: Manages Ceobe's active operation mode (autonomous or ask).
 //          Mode is persisted in .ceobe/config.json inside the target project.
@@ -34,16 +34,45 @@ export interface ConfirmationBridge {
    * Resolves to true (approve), false (skip), or throws an error (abort pipeline).
    */
   requestConfirmation(summary: string): Promise<boolean>;
+
+  /**
+   * Cleans up any resources or listeners when the bridge is no longer needed.
+   */
+  destroy?(): void;
 }
 
 let activeConfirmationBridge: ConfirmationBridge | null = null;
 
 export function setConfirmationBridge(bridge: ConfirmationBridge): void {
-  activeConfirmationBridge = bridge;
+  const ctx = executionContext.getStore();
+  if (ctx) {
+    ctx.confirmationBridge = bridge;
+  } else {
+    activeConfirmationBridge = bridge;
+  }
 }
 
 export function clearConfirmationBridge(): void {
-  activeConfirmationBridge = null;
+  const ctx = executionContext.getStore();
+  if (ctx) {
+    if (ctx.confirmationBridge?.destroy) {
+      ctx.confirmationBridge.destroy();
+    }
+    ctx.confirmationBridge = undefined;
+  } else {
+    if (activeConfirmationBridge?.destroy) {
+      activeConfirmationBridge.destroy();
+    }
+    activeConfirmationBridge = null;
+  }
+}
+
+function getConfirmationBridge(): ConfirmationBridge | null {
+  const ctx = executionContext.getStore();
+  if (ctx && ctx.confirmationBridge) {
+    return ctx.confirmationBridge as ConfirmationBridge;
+  }
+  return activeConfirmationBridge;
 }
 
 /** Tool calls that require confirmation when mode = ask */
@@ -69,15 +98,25 @@ function getConfigPath(): string {
 // Read / Write
 // ─────────────────────────────────────────────
 
+let cachedConfig: CeobeConfig | null = null;
+
+export function clearConfigCacheForTesting(): void {
+  cachedConfig = null;
+}
+
 export function readConfig(): CeobeConfig {
+  if (cachedConfig) return cachedConfig;
   const configPath = getConfigPath();
   if (!fs.existsSync(configPath)) {
-    return { mode: 'autonomous', updatedAt: new Date().toISOString() };
+    cachedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
+    return cachedConfig;
   }
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
+    cachedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
+    return cachedConfig;
   } catch {
-    return { mode: 'autonomous', updatedAt: new Date().toISOString() };
+    cachedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
+    return cachedConfig;
   }
 }
 
@@ -85,7 +124,12 @@ export function writeConfig(config: CeobeConfig): void {
   const configPath = getConfigPath();
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  
+  const tmpPath = `${configPath}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
+  fs.renameSync(tmpPath, configPath);
+  
+  cachedConfig = config;
 }
 
 export function getActiveMode(): CeobeMode {
@@ -147,8 +191,9 @@ export async function confirmToolCall(
   }
 
   // Jika ada bridge aktif (misal dari Telegram), delegasikan ke bridge tersebut
-  if (activeConfirmationBridge) {
-    return activeConfirmationBridge.requestConfirmation(summary);
+  const bridge = getConfirmationBridge();
+  if (bridge) {
+    return bridge.requestConfirmation(summary);
   }
 
   // Fallback: gunakan terminal standar (readline)
@@ -156,6 +201,12 @@ export async function confirmToolCall(
   return new Promise((resolve, reject) => {
     console.log('\n' + chalk.bgYellow.black(' KONFIRMASI DIPERLUKAN '));
     console.log(summary);
+    
+    rl.on('SIGINT', () => {
+      rl.close();
+      reject(new Error('USER_ABORT: Sesi dihentikan oleh pengguna (SIGINT).'));
+    });
+
     rl.question(
       chalk.yellow('\nSetuju? [y] Ya / [n] Lewati / [a] Batalkan semua: '),
       (answer) => {

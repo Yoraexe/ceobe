@@ -6,7 +6,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { env } from '../../config/env';
 
 export interface CodeChunk {
   id: string;
@@ -16,8 +15,10 @@ export interface CodeChunk {
   embedding: number[];
 }
 
+import { getProjectDir } from '../../utils/context';
+
 export function getEmbeddingsFilePath(): string {
-  return path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'embeddings.json');
+  return path.join(getProjectDir(), '.ceobe', 'embeddings.json');
 }
 
 export function saveEmbeddings(chunks: CodeChunk[]): void {
@@ -80,6 +81,12 @@ export interface SearchResult {
 export function searchEmbeddings(queryVector: number[], topK: number = 5): SearchResult[] {
   const chunks = loadEmbeddings();
   if (chunks.length === 0) return [];
+
+  // Verifikasi jika dimensi embedding berubah (karena pergantian model provider)
+  if (chunks[0].embedding.length > 0 && chunks[0].embedding.length !== queryVector.length) {
+    try { fs.unlinkSync(getEmbeddingsFilePath()); } catch (e) {}
+    throw new Error('Dimensi embedding tidak cocok (kemungkinan model provider berubah). Cache index telah dihapus. Harap jalankan "ceobe index" ulang.');
+  }
 
   const results: SearchResult[] = chunks.map(chunk => ({
     chunk,

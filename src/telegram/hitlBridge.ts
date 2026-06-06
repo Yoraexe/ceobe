@@ -13,11 +13,19 @@ export class TelegramHITLBridge implements ConfirmationBridge {
   private bot: TelegramBot;
   private chatId: number;
   private timeoutMs: number;
+  private activeCleanups: Set<() => void> = new Set();
 
   constructor(bot: TelegramBot, chatId: number, timeoutMs = 120000) {
     this.bot = bot;
     this.chatId = chatId;
     this.timeoutMs = timeoutMs;
+  }
+
+  public destroy(): void {
+    for (const cleanup of this.activeCleanups) {
+      try { cleanup(); } catch (e) {}
+    }
+    this.activeCleanups.clear();
   }
 
   public async requestConfirmation(summary: string): Promise<boolean> {
@@ -51,12 +59,14 @@ export class TelegramHITLBridge implements ConfirmationBridge {
 
       const cleanup = () => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
-        this.bot.removeListener('callback_query', listener);
+        if (listener) this.bot.removeListener('callback_query', listener);
         // Hapus tombol setelah dijawab/timeout
         if (sentMessageId) {
           this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, { chat_id: this.chatId, message_id: sentMessageId }).catch(() => {});
         }
+        this.activeCleanups.delete(cleanup);
       };
+      this.activeCleanups.add(cleanup);
 
       // 1. Kirim pesan ke Telegram
       this.bot.sendMessage(this.chatId, messageText, options).then((msg) => {
@@ -65,7 +75,7 @@ export class TelegramHITLBridge implements ConfirmationBridge {
         // 2. Set timeout (auto abort jika tidak ada respons)
         timeoutHandle = setTimeout(() => {
           cleanup();
-          reject(new Error('TIMEOUT: Tidak ada respons konfirmasi dari Telegram selama 120 detik. Sesi dibatalkan demi keamanan.'));
+          reject(new Error(`TIMEOUT: Tidak ada respons konfirmasi dari Telegram selama ${this.timeoutMs / 1000} detik. Sesi dibatalkan demi keamanan.`));
         }, this.timeoutMs);
 
         // 3. Dengarkan jawaban tombol
@@ -99,6 +109,7 @@ export class TelegramHITLBridge implements ConfirmationBridge {
 
         this.bot.on('callback_query', listener);
       }).catch((err) => {
+        cleanup();
         reject(new Error(`Gagal mengirim konfirmasi HITL ke Telegram: ${err.message}`));
       });
     });

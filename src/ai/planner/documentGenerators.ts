@@ -1,0 +1,139 @@
+import ora from 'ora';
+import chalk from 'chalk';
+import { createProviderAdapter } from '../providers/router';
+import { 
+  buildBRDPrompt, 
+  buildDesignPrompt, 
+  buildArchitecturePrompt, 
+  buildImplementationPrompt, 
+  buildDevOpsPrompt
+} from '../utils/promptBuilder';
+import { recordUsage } from '../../utils/costTracker';
+import type { NormalizedContentBlock } from '../providers/types';
+
+function getPlanner() {
+  const adapter = createProviderAdapter('planner');
+  const tag = `[${adapter.name.toUpperCase()} / ${adapter.modelId}]`;
+  return { adapter, tag };
+}
+
+export async function generateBRD(
+  taskDescription: string | NormalizedContentBlock[],
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Generating Business Requirements Document...`).start();
+
+  try {
+    const stringDesc = typeof taskDescription === 'string' ? taskDescription : '(See attached image/blocks for input)';
+    const basePrompt = buildBRDPrompt(stringDesc, selectedSkills, auditorFeedback);
+
+    const prompt: string | any[] = typeof taskDescription === 'string'
+      ? basePrompt
+      : [
+          { type: 'text', text: basePrompt },
+          ...taskDescription
+        ];
+
+    const _genResult = await adapter.generate(prompt, 0.2); 
+    if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
+    const result = _genResult.text;
+    spinner.succeed(chalk.green(`${tag} BRD generated successfully.`));
+    return result;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate BRD. Reason: ${msg}`));
+    throw error;
+  }
+}
+
+export async function generateDesignSpec(
+  brdContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Designing UI/UX & Design System...`).start();
+
+  try {
+    const prompt = buildDesignPrompt(brdContent, selectedSkills, auditorFeedback);
+    const _genResult = await adapter.generate(prompt, 0.3); 
+    if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
+    const result = _genResult.text;
+    spinner.succeed(chalk.green(`${tag} Design Spec generated successfully.`));
+    return result;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate Design Spec. Reason: ${msg}`));
+    throw error;
+  }
+}
+
+export async function generateArchitecture(
+  brdContent: string,
+  designContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Designing System Architecture...`).start();
+
+  try {
+    const prompt = buildArchitecturePrompt(brdContent, designContent, selectedSkills, auditorFeedback);
+    const _genResult = await adapter.generate(prompt, 0.2); 
+    if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
+    const result = _genResult.text;
+    spinner.succeed(chalk.green(`${tag} Architecture Plan generated successfully.`));
+    return result;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate Architecture Plan. Reason: ${msg}`));
+    throw error;
+  }
+}
+
+export async function generateImplementationPlan(
+  architectureContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Generating Execution Checklist...`).start();
+
+  try {
+    const prompt = buildImplementationPrompt(architectureContent, selectedSkills, auditorFeedback);
+    const _genResult = await adapter.generate(prompt, 0.2); 
+    if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
+    const result = _genResult.text;
+    spinner.succeed(chalk.green(`${tag} Execution Checklist generated successfully.`));
+    return result;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate Checklist. Reason: ${msg}`));
+    throw error;
+  }
+}
+
+export async function generateDevOpsConfig(
+  architectureContent: string,
+  _taskContent: string,
+  selectedSkills: string[] = [],
+  auditorFeedback?: string
+): Promise<string> {
+  const { adapter, tag } = getPlanner();
+  const spinner = ora(`${tag} Generating DevOps & Deployment Config...`).start();
+
+  try {
+    const prompt = buildDevOpsPrompt(architectureContent, selectedSkills, auditorFeedback);
+    const _genResult = await adapter.generate(prompt, 0.2); 
+    if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
+    const result = _genResult.text;
+    spinner.succeed(chalk.green(`${tag} DevOps Spec generated successfully.`));
+    return result;
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    spinner.fail(chalk.red(`${tag} Failed to generate DevOps Spec. Reason: ${msg}`));
+    throw error;
+  }
+}

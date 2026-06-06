@@ -66,7 +66,9 @@ export interface EnvConfig {
   CEOBE_INSTALL_DIR: string;
   TARGET_PROJECT_DIR: string;
   CEOBE_SANDBOX: 'docker' | 'none';
+  CEOBE_SANDBOX_IMAGE: string;
   CEOBE_MAX_BUDGET: number;
+  CEOBE_MAX_TOKENS: number;
 }
 
 export function loadEnv(): EnvConfig {
@@ -101,23 +103,34 @@ export function loadEnv(): EnvConfig {
     OPENAI_API_KEY: getOptional('OPENAI_API_KEY'),
     CEOBE_INSTALL_DIR: getOptional('CEOBE_INSTALL_DIR') || path.resolve(__dirname, '../../'),
     TARGET_PROJECT_DIR: process.cwd(),
-    CEOBE_SANDBOX: (process.env.CEOBE_SANDBOX as 'docker' | 'none') || 'none',
+    CEOBE_SANDBOX: (['docker', 'none'].includes(process.env.CEOBE_SANDBOX as string) ? process.env.CEOBE_SANDBOX : 'none') as 'docker' | 'none',
+    CEOBE_SANDBOX_IMAGE: getOptional('CEOBE_SANDBOX_IMAGE') || '',
     CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 0,
+    CEOBE_MAX_TOKENS: parseInt(getOptional('CEOBE_MAX_TOKENS'), 10) || 16384,
   };
 
   return config;
 }
 
+export const env = loadEnv();
+
 /**
  * Constructs the Cloudflare AI Gateway URL for a given provider.
  * Returns an empty string if Cloudflare credentials are not configured.
  */
-export function getGatewayUrl(provider: 'google-genai' | '@google/genai' | 'anthropic'): string {
+export function getGatewayUrl(provider: string): string {
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_GATEWAY_ID) {
     return '';
   }
-  const slug = provider.includes('/') ? provider.split('/')[1] : provider;
+  
+  const providerSlugMap: Record<string, string> = {
+    'google-genai': 'google-genai',
+    '@google/genai': 'google-genai',
+    'anthropic': 'anthropic',
+    'openrouter': 'openrouter',
+    'openai': 'openai',
+  };
+
+  const slug = providerSlugMap[provider] || provider.replace(/[^a-zA-Z0-9-]/g, '-');
   return `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.CLOUDFLARE_GATEWAY_ID}/${slug}`;
 }
-
-export const env = loadEnv();

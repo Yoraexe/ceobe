@@ -45,20 +45,33 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
   let provider: string;
   let modelOverride: string | undefined;
 
+  let providerRole = roleUpper;
+
   if (role === 'qa') {
     // QA: Use dedicated QA provider first, fallback to Planner
-    provider = (process.env['CEOBE_QA_PROVIDER'] || process.env['CEOBE_PLANNER_PROVIDER'] || '').toLowerCase();
-    modelOverride = process.env['CEOBE_QA_MODEL'] || process.env['CEOBE_PLANNER_MODEL'];
     if (process.env['CEOBE_QA_PROVIDER']) {
+      provider = process.env['CEOBE_QA_PROVIDER'].toLowerCase();
+      modelOverride = process.env['CEOBE_QA_MODEL'];
+      providerRole = 'QA';
       log(chalk.dim(`[Provider Router] Role: QA | Using dedicated QA provider`));
     } else {
+      provider = (process.env['CEOBE_PLANNER_PROVIDER'] || '').toLowerCase();
+      modelOverride = process.env['CEOBE_PLANNER_MODEL'];
+      providerRole = 'PLANNER';
       log(chalk.dim(`[Provider Router] Role: QA | No CEOBE_QA_PROVIDER set — falling back to Planner provider`));
     }
   } else {
     const otherRole = role === 'planner' ? 'EXECUTOR' : 'PLANNER';
     // Try specific role first, then fallback to the other role's provider
-    provider = (process.env[`CEOBE_${roleUpper}_PROVIDER`] || process.env[`CEOBE_${otherRole}_PROVIDER`] || '').toLowerCase();
-    modelOverride = process.env[`CEOBE_${roleUpper}_MODEL`] || process.env[`CEOBE_${otherRole}_MODEL`];
+    if (process.env[`CEOBE_${roleUpper}_PROVIDER`]) {
+      provider = process.env[`CEOBE_${roleUpper}_PROVIDER`]!.toLowerCase();
+      modelOverride = process.env[`CEOBE_${roleUpper}_MODEL`];
+      providerRole = roleUpper;
+    } else {
+      provider = (process.env[`CEOBE_${otherRole}_PROVIDER`] || '').toLowerCase();
+      modelOverride = process.env[`CEOBE_${otherRole}_MODEL`];
+      providerRole = otherRole;
+    }
   }
 
   if (!provider) {
@@ -84,19 +97,19 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
   const known = KNOWN_PROVIDERS[provider];
   if (!known) {
     // Allow fully custom providers with explicit env vars
-    const customBaseURL = process.env[`CEOBE_${roleUpper}_BASE_URL`];
-    const customKey = process.env[`CEOBE_${roleUpper}_API_KEY`];
+    const customBaseURL = process.env[`CEOBE_${providerRole}_BASE_URL`];
+    const customKey = process.env[`CEOBE_${providerRole}_API_KEY`];
     const customModel = modelOverride || 'custom-model';
 
     if (!customBaseURL || !customKey) {
       throw new Error(
         `[Provider Router] Unknown provider '${provider}' for role '${role}'. ` +
-        `Set CEOBE_${roleUpper}_BASE_URL and CEOBE_${roleUpper}_API_KEY for custom providers, ` +
+        `Set CEOBE_${providerRole}_BASE_URL and CEOBE_${providerRole}_API_KEY for custom providers, ` +
         `or use: ${Object.keys(KNOWN_PROVIDERS).join(', ')}`
       );
     }
 
-    log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using custom provider '${provider}' → ${customModel}`));
+    log(chalk.dim(`[Provider Router] Role: ${roleUpper} (Config: ${providerRole}) | Using custom provider '${provider}' → ${customModel}`));
     return new OpenAICompatibleAdapter(provider, customModel, customKey, customBaseURL);
   }
 

@@ -4,7 +4,7 @@
 // v1.8.0: Fase 2 - Cost Tracking & Budget Limits
 
 import chalk from 'chalk';
-import { log } from './context';
+import { log, executionContext } from './context';
 
 export interface TokenUsage {
   model: string;
@@ -17,6 +17,8 @@ const PRICING: Record<string, { input: number; output: number }> = {
   // Gemini
   'gemini-2.5-flash': { input: 0.075, output: 0.30 },
   'gemini-2.5-pro': { input: 1.25, output: 5.00 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.30 },
+  'gemini-1.5-pro': { input: 1.25, output: 5.00 },
   'gemini-exp': { input: 0, output: 0 },
   
   // Anthropic Claude
@@ -32,21 +34,41 @@ const PRICING: Record<string, { input: number; output: number }> = {
   // DeepSeek / GLM (Approximation for open-weights / chinese models)
   'glm-5.1-flash': { input: 0.05, output: 0.05 },
   'deepseek-chat': { input: 0.14, output: 0.28 },
-  'deepseek-coder': { input: 0.14, output: 0.28 }
+  'deepseek-v3': { input: 0.14, output: 0.28 },
+  'deepseek-coder': { input: 0.14, output: 0.28 },
+  'qwen-max': { input: 0.40, output: 1.20 },
+  'qwen-plus': { input: 0.15, output: 0.45 },
+  'kimi': { input: 0.20, output: 0.60 },
+  'llama-3': { input: 0.15, output: 0.15 },
+  'kimi-k2.6-plus': { input: 0.20, output: 0.60 },
+  'qwen-3-max': { input: 0.30, output: 0.90 }
 };
 
-let sessionUsage: TokenUsage[] = [];
+let globalSessionUsage: TokenUsage[] = [];
+
+function getSessionUsageArray(): TokenUsage[] {
+  const ctx = executionContext.getStore();
+  if (ctx) {
+    if (!ctx.sessionUsage) ctx.sessionUsage = [];
+    return ctx.sessionUsage as TokenUsage[];
+  }
+  return globalSessionUsage;
+}
 
 export function resetSession(): void {
-  sessionUsage = [];
+  const arr = getSessionUsageArray();
+  arr.length = 0; // Clears the array in place
 }
 
 export function recordUsage(usage: TokenUsage): void {
-  sessionUsage.push(usage);
+  if (Number.isNaN(usage.inputTokens) || typeof usage.inputTokens !== 'number') usage.inputTokens = 0;
+  if (Number.isNaN(usage.outputTokens) || typeof usage.outputTokens !== 'number') usage.outputTokens = 0;
+  getSessionUsageArray().push(usage);
 }
 
 export function getSessionCost(): number {
   let totalCost = 0;
+  const sessionUsage = getSessionUsageArray();
   for (const usage of sessionUsage) {
     // Find closest matching pricing tier based on model name substring, sorting by length desc to match specific models first (e.g. gpt-4o-mini vs gpt-4o)
     const modelKey = Object.keys(PRICING)
@@ -62,7 +84,7 @@ export function getSessionCost(): number {
 }
 
 export function checkBudget(maxUsd: number): void {
-  if (maxUsd <= 0) return; // 0 means no limit
+  if (!Number.isFinite(maxUsd) || maxUsd <= 0) return; // 0 means no limit
   const currentCost = getSessionCost();
   if (currentCost > maxUsd) {
     throw new Error(`BUDGET_EXCEEDED: Eksekusi dihentikan. Biaya saat ini ($${currentCost.toFixed(4)}) melebihi batas anggaran ($${maxUsd.toFixed(4)}).`);
@@ -71,9 +93,16 @@ export function checkBudget(maxUsd: number): void {
 
 export function getCostSummary(): string {
   const totalCost = getSessionCost();
+  const sessionUsage = getSessionUsageArray();
   const totalInput = sessionUsage.reduce((sum, u) => sum + u.inputTokens, 0);
   const totalOutput = sessionUsage.reduce((sum, u) => sum + u.outputTokens, 0);
-  return `Token: ${totalInput.toLocaleString()} IN, ${totalOutput.toLocaleString()} OUT | Estimasi Biaya: $${totalCost.toFixed(4)}`;
+  
+  const hasUnknownModel = sessionUsage.some(usage => {
+    return !Object.keys(PRICING).some(k => usage.model.toLowerCase().includes(k));
+  });
+
+  const costStr = hasUnknownModel ? `$${totalCost.toFixed(4)}+` : `$${totalCost.toFixed(4)}`;
+  return `Token: ${totalInput.toLocaleString()} IN, ${totalOutput.toLocaleString()} OUT | Estimasi Biaya: ${costStr}`;
 }
 
 export function printCostSummary(): void {

@@ -8,7 +8,7 @@
 // Side Effects: Tidak ada I/O langsung. Hanya parsing in-memory.
 // v1.7.0: Modul baru — Fase 4 dari Ceobe Enterprise Upgrade (AST Context Compression).
 
-import { Project, SyntaxKind, SourceFile } from 'ts-morph';
+import { Project, SourceFile } from 'ts-morph';
 
 /** Jumlah baris minimum agar AST compression diaktifkan untuk file TS/TSX. */
 export const AST_COMPRESSION_THRESHOLD = 80;
@@ -56,13 +56,11 @@ export function extractTypeScriptSignatures(fileContent: string, filePath: strin
   sections.push(`// [AST-COMPRESSED] ${filePath}`);
 
   // ── 1. File-level JSDoc / leading comments ─────────────────────────────────
-  const leadingComment = sourceFile.getStatementsWithComments()
-    .filter(s => s.getKind() === SyntaxKind.SingleLineCommentTrivia ||
-                 s.getKind() === SyntaxKind.MultiLineCommentTrivia)
-    .slice(0, 8) // Keep up to 8 header comment lines
-    .map(s => s.getText())
-    .join('\n');
-  if (leadingComment) sections.push(leadingComment);
+  const firstStmt = sourceFile.getStatements()[0];
+  if (firstStmt) {
+    const comments = firstStmt.getLeadingCommentRanges().map(c => c.getText());
+    if (comments.length > 0) sections.push(comments.join('\n'));
+  }
 
   // ── 2. Import declarations (condensed to one line each) ───────────────────
   const imports = sourceFile.getImportDeclarations();
@@ -115,7 +113,7 @@ export function extractTypeScriptSignatures(fileContent: string, filePath: strin
         ? `<${fn.getTypeParameters().map(p => p.getText()).join(', ')}>`
         : '';
       const params = fn.getParameters().map(p => p.getText()).join(', ');
-      const returnType = fn.getReturnTypeNode()?.getText() ?? 'void';
+      const returnType = fn.getReturnTypeNode()?.getText() ?? (fn.isAsync() ? 'Promise<any>' : 'any');
 
       sections.push(`${modifiers ? modifiers + ' ' : ''}function ${name}${typeParams}(${params}): ${returnType}; // [body omitted]`);
     });
@@ -160,7 +158,7 @@ export function extractTypeScriptSignatures(fileContent: string, filePath: strin
           ? `<${method.getTypeParameters().map(p => p.getText()).join(', ')}>`
           : '';
         const mParams = method.getParameters().map(p => p.getText()).join(', ');
-        const mReturn = method.getReturnTypeNode()?.getText() ?? 'void';
+        const mReturn = method.getReturnTypeNode()?.getText() ?? (method.isAsync() ? 'Promise<any>' : 'any');
         lines.push(`  ${mMods ? mMods + ' ' : ''}${mName}${mTypeParams}(${mParams}): ${mReturn}; // [body omitted]`);
       });
 

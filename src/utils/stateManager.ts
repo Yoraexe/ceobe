@@ -18,6 +18,8 @@ export interface CeobeState {
   lastUpdated: string;
   /** Total self-healing cycles consumed in the current/last execution run. */
   selfHealCount?: number;
+  /** The last git snapshot created before execution. Used for manual rollbacks. */
+  lastSnapshotHash?: string;
 }
 
 let cachedState: CeobeState | null = null;
@@ -33,17 +35,14 @@ export function clearStateCache(): void {
 export async function readState(): Promise<CeobeState | null> {
   if (cachedState) return cachedState;
   
-  const statePath = getStateFilePath();
-  if (!fs.existsSync(statePath)) {
-    return null;
-  }
-  
   try {
-    const data = await fs.promises.readFile(statePath, 'utf8');
+    const data = await fs.promises.readFile(getStateFilePath(), 'utf8');
     cachedState = JSON.parse(data);
     return cachedState;
-  } catch (err) {
-    log(chalk.yellow('Failed to read .ceobe/ceobe-state.json'));
+  } catch (err: any) {
+    if (err.code !== 'ENOENT') {
+      log(chalk.yellow(`Failed to read .ceobe/ceobe-state.json: ${err.message}`));
+    }
     return null;
   }
 }
@@ -52,13 +51,17 @@ export async function writeState(state: Partial<CeobeState>): Promise<void> {
   const statePath = getStateFilePath();
   const dir = path.dirname(statePath);
   
-  if (!fs.existsSync(dir)) {
+  try {
     await fs.promises.mkdir(dir, { recursive: true });
+  } catch (err) {
+    // Ignore if directory exists
   }
 
-  // Touch the file if it doesn't exist so proper-lockfile has something to lock
-  if (!fs.existsSync(statePath)) {
-    await fs.promises.writeFile(statePath, JSON.stringify({ currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() }), 'utf8');
+  // Touch the file if it doesn't exist so proper-lockfile has something to lock (atomic wx flag)
+  try {
+    await fs.promises.writeFile(statePath, JSON.stringify({ currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() }), { flag: 'wx', encoding: 'utf8' });
+  } catch (err) {
+    // Ignore if file already exists (EEXIST)
   }
 
   // Acquire proper file lock with exponential backoff retries, preventing CPU spin locking
@@ -76,6 +79,7 @@ export async function writeState(state: Partial<CeobeState>): Promise<void> {
   try {
     let currentState: CeobeState;
     try {
+      // ALWAYS read fresh from disk inside the lock to prevent race conditions
       currentState = JSON.parse(await fs.promises.readFile(statePath, 'utf8'));
     } catch (err) {
       currentState = { currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() };
@@ -86,19 +90,20 @@ export async function writeState(state: Partial<CeobeState>): Promise<void> {
       ...state,
       lastUpdated: new Date().toISOString()
     };
-
-    cachedState = newState;
     
     // Atomic write via temp file
     const tempPath = statePath + '.tmp.' + Math.random().toString(36).substring(2);
     await fs.promises.writeFile(tempPath, JSON.stringify(newState, null, 2), 'utf8');
     await fs.promises.rename(tempPath, statePath);
+
+    cachedState = newState;
   } finally {
     await release();
   }
 }
 
 export async function markPhaseComplete(phaseName: string, nextPhase: CeobeState['currentPhase']): Promise<void> {
+  clearStateCache();
   const currentState = await readState();
   const completed = currentState ? new Set(currentState.completedPhases) : new Set<string>();
   completed.add(phaseName);
@@ -109,17 +114,31 @@ export async function markPhaseComplete(phaseName: string, nextPhase: CeobeState
   });
 }
 
+const fileLock = new Map<string, Promise<void>>();
 export async function markFileComplete(filePath: string): Promise<void> {
-  const currentState = await readState();
-  const files = currentState ? new Set(currentState.completedFiles || []) : new Set<string>();
-  
-  if (files.has(filePath)) return; // Skip disk write if already complete
-  
-  files.add(filePath);
-  
-  await writeState({
-    completedFiles: Array.from(files)
-  });
+  const normPath = 'global_file_lock';
+  const prev = fileLock.get(normPath) ?? Promise.resolve();
+  let release = () => {};
+  const next = new Promise<void>((resolve) => { release = resolve; });
+  fileLock.set(normPath, next);
+  await prev;
+
+  try {
+    clearStateCache();
+    const currentState = await readState();
+    const files = currentState ? new Set(currentState.completedFiles || []) : new Set<string>();
+    
+    if (files.has(filePath)) return; // Skip disk write if already complete
+    
+    files.add(filePath);
+    
+    await writeState({
+      completedFiles: Array.from(files)
+    });
+  } finally {
+    if (fileLock.get(normPath) === next) fileLock.delete(normPath);
+    release();
+  }
 }
 
 export async function getCompletedFiles(): Promise<string[]> {
@@ -136,4 +155,8 @@ export async function markSelfHeal(): Promise<number> {
   const newCount = (currentState?.selfHealCount ?? 0) + 1;
   await writeState({ selfHealCount: newCount });
   return newCount;
+}
+
+export async function saveSnapshotHash(hash: string): Promise<void> {
+  await writeState({ lastSnapshotHash: hash });
 }

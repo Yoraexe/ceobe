@@ -10,8 +10,10 @@ import { getProjectDir } from '../utils/context';
 import chalk from 'chalk';
 import * as path from 'path';
 
+import packageJson from '../../package.json';
+
 export const APP_NAME = 'Ceobe Mastery CLI';
-export const VERSION = '1.11.4';
+export const VERSION = packageJson.version || '1.12.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner

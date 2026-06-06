@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockGenerate = vi.fn();
 
-vi.mock('./providers/router', () => ({
+vi.mock('../providers/router', () => ({
   createProviderAdapter: vi.fn().mockReturnValue({
     name: 'gemini',
     modelId: 'gemini-mock',
@@ -10,18 +10,23 @@ vi.mock('./providers/router', () => ({
   })
 }));
 
-vi.mock('../utils/contextLoader', () => ({
+vi.mock('../../utils/contextLoader', () => ({
   getAvailableSkills: vi.fn().mockReturnValue(['mock-skill']),
   readCeobeRules: vi.fn().mockReturnValue('mock rules'),
   readSpecificSkills: vi.fn().mockReturnValue('mock skill context'),
   readTemplate: vi.fn().mockReturnValue('mock template')
 }));
 
+vi.mock('../../utils/costTracker', () => ({
+  recordUsage: vi.fn(),
+  checkBudget: vi.fn(),
+}));
+
 vi.mock('ora', () => ({
   default: vi.fn().mockReturnValue({ start: vi.fn().mockReturnThis(), succeed: vi.fn(), fail: vi.fn(), warn: vi.fn() })
 }));
 
-import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, auditPlan } from './planner';
+import { selectRelevantSkills, generateBRD, generateArchitecture, generateImplementationPlan, auditPlan } from './index';
 
 describe('planner', () => {
   beforeEach(() => {
@@ -29,38 +34,38 @@ describe('planner', () => {
   });
 
   it('selectRelevantSkills should return skills', async () => {
-    mockGenerate.mockResolvedValueOnce('mock-skill');
+    mockGenerate.mockResolvedValueOnce({ text: 'mock-skill', usage: { input_tokens: 10, output_tokens: 10 } });
     const result = await selectRelevantSkills('test');
     expect(result).toEqual(['mock-skill']);
   });
 
   it('selectRelevantSkills should return empty array if none', async () => {
-    mockGenerate.mockResolvedValueOnce('none');
+    mockGenerate.mockResolvedValueOnce({ text: 'none', usage: { input_tokens: 10, output_tokens: 10 } });
     const result = await selectRelevantSkills('test');
     expect(result).toEqual([]);
   });
 
   it('generateBRD should return text', async () => {
-    mockGenerate.mockResolvedValueOnce('brd content');
-    const result = await generateBRD('test');
+    mockGenerate.mockResolvedValueOnce({ text: 'brd content', usage: { input_tokens: 10, output_tokens: 10 } });
+    const result = await generateBRD('test', ['skills']);
     expect(result).toBe('brd content');
   });
 
   it('generateArchitecture should return text', async () => {
-    mockGenerate.mockResolvedValueOnce('arch content');
-    const result = await generateArchitecture('test', 'design');
+    mockGenerate.mockResolvedValueOnce({ text: 'arch content', usage: { input_tokens: 10, output_tokens: 10 } });
+    const result = await generateArchitecture('test', 'design', ['skills']);
     expect(result).toBe('arch content');
   });
 
   it('generateImplementationPlan should return text', async () => {
-    mockGenerate.mockResolvedValueOnce('plan content');
-    const result = await generateImplementationPlan('test');
+    mockGenerate.mockResolvedValueOnce({ text: 'plan content', usage: { input_tokens: 10, output_tokens: 10 } });
+    const result = await generateImplementationPlan('test', ['skills']);
     expect(result).toBe('plan content');
   });
 
   it('generateBRD should pass auditorFeedback to prompt', async () => {
-    mockGenerate.mockResolvedValueOnce('brd content');
-    await generateBRD('test', [], 'bad design');
+    mockGenerate.mockResolvedValueOnce({ text: 'brd content', usage: { input_tokens: 10, output_tokens: 10 } });
+    await generateBRD('test', ['skills'], 'bad design');
     expect(mockGenerate).toHaveBeenCalledWith(
       expect.stringContaining('bad design'),
       expect.any(Number)
@@ -68,14 +73,14 @@ describe('planner', () => {
   });
 
   it('auditPlan should return true if approved', async () => {
-    mockGenerate.mockResolvedValueOnce('APPROVED');
-    const result = await auditPlan('test', '');
+    mockGenerate.mockResolvedValueOnce({ text: 'APPROVED', usage: { input_tokens: 10, output_tokens: 10 } });
+    const result = await auditPlan('test', '', ['skills']);
     expect(result.passed).toBe(true);
   });
 
   it('auditPlan should return false and feedback if not approved', async () => {
-    mockGenerate.mockResolvedValueOnce('Issues found');
-    const result = await auditPlan('test', '');
+    mockGenerate.mockResolvedValueOnce({ text: 'Issues found', usage: { input_tokens: 10, output_tokens: 10 } });
+    const result = await auditPlan('test', '', ['skills']);
     expect(result.passed).toBe(false);
     expect(result.feedback).toBe('Issues found');
   });

@@ -1,87 +1,45 @@
+// Module: src/ai/executor.ts
 // Tujuan: Menjalankan agent loop berdasarkan rencana eksekusi menggunakan AI provider.
 // Caller: src/index.ts, src/ai/supervisor.ts
-// Dependensi: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path, costTracker, retry, plugins/pluginLoader
-// Main Functions: executePlan, trimMessages
-// Side Effects: Mengirim permintaan API ke provider AI, memanggil perkakas sistem (I/O file/command)
-// v1.7.0: Self-Healing - autonomous retry on failed commands.
+// Dependensi: providers/router, providers/types, systemTools, stateManager, modeManager, chalk, ora, fs, path, costTracker, retry, plugins/pluginLoader, taskParser, messageFormatter
 
 import { env } from '../config/env';
-
 import { createExecutorAdapter } from './providers/router';
-import type { NormalizedMessage, NormalizedContentBlock, NormalizedTool } from './providers/types';
+import type { NormalizedMessage, NormalizedTool } from './providers/types';
 import chalk from 'chalk';
 import ora from 'ora';
-import { tools as rawTools, handleToolCall } from './tools/systemTools';
+import { tools as rawTools, activeBackgroundProcesses } from './tools/systemTools';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getProjectDir, log } from '../utils/context';
-import { markFileComplete, markSelfHeal } from '../utils/stateManager';
-import { getActiveMode, SENSITIVE_TOOLS, confirmToolCall } from '../utils/modeManager';
 import { recordUsage, checkBudget } from '../utils/costTracker';
 import { withRetry } from '../utils/retry';
-import { loadDynamicTools } from './plugins/pluginLoader';
+import { loadDynamicTools, clearLoadedPlugins } from './plugins/pluginLoader';
+import { parseTaskWaves } from './taskParser';
+import { 
+  trimMessages, 
+  getExecutorSystemInstruction, 
+  truncateModelResponse, 
+  cleanupOldSelfHeals 
+} from './utils/messageFormatter';
+import { executeToolCalls } from './executor/toolExecutor';
 
-// Cast Ceobe's internal tool format to the normalized type
-const tools = rawTools as unknown as NormalizedTool[];
+export { trimMessages }; // For backward compatibility with tests
 
-// ── Self-Healing constants ────────────────────────────────────────────────────
-/** Maximum number of autonomous bug-fix cycles before giving up. */
+const tools = rawTools as NormalizedTool[];
+
 const MAX_SELF_HEAL = 3;
-
-/**
- * Returns true when an execute_command tool result signals a failure.
- * Matches the format returned by systemTools.ts execute_command handler.
- */
-function isCommandFailure(result: unknown): boolean {
-  if (typeof result !== 'string') return false;
-  return result.trimStart().startsWith('Command failed:');
-}
-
-/**
- * Safely trims the message history to avoid exceeding context window limits,
- * while ensuring tool_use / tool_result pairs are never orphaned.
- */
-export function trimMessages(
-  messages: NormalizedMessage[],
-  maxMessages: number = 25
-): NormalizedMessage[] {
-  if (messages.length <= maxMessages) return messages;
-
-  const firstMessage = messages[0];
-  const targetTailLength = maxMessages - 1;
-  let sliceIndex = messages.length - targetTailLength;
-
-  // Ensure we never start on a user message that is a tool_result without its
-  // preceding assistant tool_use.
-  while (sliceIndex > 1) {
-    const startMsg = messages[sliceIndex];
-    let startsWithToolResult = false;
-
-    if (startMsg.role === 'user' && Array.isArray(startMsg.content)) {
-      startsWithToolResult = startMsg.content.some(
-        (c: NormalizedContentBlock) => c.type === 'tool_result'
-      );
-    }
-
-    if (startsWithToolResult) {
-      sliceIndex--;
-    } else {
-      break;
-    }
-  }
-
-  return [firstMessage, ...messages.slice(sliceIndex)];
-}
 
 export async function executePlan(
   planMarkdown: string,
   selectedSkills: string[] = []
 ): Promise<void> {
+  clearLoadedPlugins();
   const adapter = createExecutorAdapter();
   const spinner = ora(`${adapter.name.toUpperCase()} (${adapter.modelId}) is executing the plan...`).start();
 
-  /** Tracks how many self-healing cycles have been used in this executePlan call. */
-  let selfHealCount = 0;
+  let jsonHealCount = 0;
+  let commandHealCount = 0;
   let maxTokensRetries = 0;
 
   try {
@@ -102,14 +60,7 @@ export async function executePlan(
 
     logExecution(`--- STARTED EXECUTION (provider: ${adapter.name}, model: ${adapter.modelId}) ---`);
 
-    let systemInstruction = `
-You are the Execution Engine of the Ceobe AI System.
-Your task is to take the provided execution plan and strictly implement it.
-You have access to tool commands to read/write files and run terminal commands.
-DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
-When you are completely finished with the task, you MUST call the finish_task tool.
-If you need architectural or design context, use read_file to read .ceobe/architecture.md or .ceobe/design.md.
-`;
+    const systemInstruction = getExecutorSystemInstruction();
 
     let messages: NormalizedMessage[] = [
       {
@@ -120,10 +71,11 @@ If you need architectural or design context, use read_file to read .ceobe/archit
 
     let isThinking = true;
     let iterationCount = 0;
-    const MAX_ITERATIONS = 50; // Guard against infinite failure loops
+    const MAX_ITERATIONS = 50;
 
     while (isThinking) {
       iterationCount++;
+
       if (iterationCount > MAX_ITERATIONS) {
         throw new Error(`Max iterations (${MAX_ITERATIONS}) reached. Agent is stuck in an infinite loop. Execution aborted.`);
       }
@@ -132,7 +84,6 @@ If you need architectural or design context, use read_file to read .ceobe/archit
 
       const response = await withRetry(() => adapter.chat(messages, finalTools, systemInstruction));
 
-      // Record usage for budget tracking
       if (response.usage) {
         recordUsage({
           model: adapter.modelId,
@@ -141,7 +92,6 @@ If you need architectural or design context, use read_file to read .ceobe/archit
         });
       }
 
-      // Surface the model's text reasoning in the spinner
       const textBlock = response.content.find((c) => c.type === 'text');
       if (textBlock?.text) {
         spinner.text = chalk.cyan(
@@ -151,17 +101,9 @@ If you need architectural or design context, use read_file to read .ceobe/archit
 
       const toolCalls = response.content.filter((c) => c.type === 'tool_use');
 
-      // Gap 2 Fix: CoT Preservation (Soft Truncation)
-      // Keep text blocks but truncate them to preserve Reasoning without bloat
-      const filteredContent = response.content.map(c => {
-        if (c.type === 'text' && 'text' in c && c.text) {
-           return { ...c, text: c.text.length > 1000 ? c.text.substring(0, 1000) + '\n...[Reasoning Truncated]...' : c.text };
-        }
-        return c;
-      });
+      const filteredContent = truncateModelResponse(response.content, 4000);
       messages.push({ role: 'assistant', content: filteredContent });
 
-      // --- Token truncation recovery ---
       if (response.stop_reason === 'max_tokens') {
         maxTokensRetries++;
         if (maxTokensRetries > 3) {
@@ -171,8 +113,7 @@ If you need architectural or design context, use read_file to read .ceobe/archit
           logExecution('WARN: Hit max_tokens mid-text. Asking model to continue.');
           messages.push({
             role: 'user',
-            content:
-              'You hit the max_tokens limit mid-response. Please continue exactly where you left off.',
+            content: 'You hit the max_tokens limit mid-response. Please continue exactly where you left off.',
           });
           continue;
         } else {
@@ -180,181 +121,86 @@ If you need architectural or design context, use read_file to read .ceobe/archit
           messages.pop();
           messages.push({
             role: 'user',
-            content:
-              'You hit the max_tokens limit while generating tool calls. Your last response was discarded. Please retry, but use fewer tool calls per turn.',
+            content: 'You hit the max_tokens limit while generating tool calls. Your last response was discarded. Please retry, but use fewer tool calls per turn.',
           });
           continue;
         }
+      } else {
+        maxTokensRetries = 0;
       }
 
-      // --- Agentic loop stop condition ---
       if (toolCalls.length === 0) {
-        logExecution('WARN: Model returned text without tools, but did not call finish_task. Asking it to use finish_task.');
         messages.push({
           role: 'user',
           content: 'You did not call any tools. If you are done, you MUST call finish_task. Otherwise, continue working.',
         });
         continue;
       } else {
-        // --- Execute tool calls and feed results back ---
-        const toolResultBlocks: NormalizedContentBlock[] = [];
-        const activeMode = getActiveMode();
-        
         const hasFinishTask = toolCalls.some(t => t.name === 'finish_task');
-        const realTools = toolCalls.filter(t => t.name !== 'finish_task');
 
-        for (const block of realTools) {
-          if (block.type !== 'tool_use' || !block.name) continue;
+        const state = { jsonHealCount, commandHealCount };
+        const result = await executeToolCalls(
+          toolCalls,
+          adapter.name,
+          spinner,
+          logExecution,
+          state
+        );
+        jsonHealCount = state.jsonHealCount;
+        commandHealCount = state.commandHealCount;
 
-          spinner.text = chalk.yellow(`[${adapter.name.toUpperCase()}] Executing tool: ${block.name}...`);
+        if (result.userAborted) {
+          return;
+        }
 
-          // ── ASK MODE GATE ──────────────────────────────────────────
-          if (activeMode === 'ask' && SENSITIVE_TOOLS.has(block.name)) {
-            spinner.stop();
-            let approved = false;
-            try {
-              approved = await confirmToolCall(block.name, (block.input ?? {}) as Record<string, unknown>);
-            } catch (abortErr: unknown) {
-              // User typed 'a' / 'abort' — stop the entire session
-              const msg = abortErr instanceof Error ? abortErr.message : String(abortErr);
-              log(chalk.red(`\n[Mode: Bertanya] ${msg}`));
-              logExecution(`USER_ABORT: Session terminated by user during ${block.name}`);
-              return;
-            }
+        let { toolResultBlocks } = result;
 
-            if (!approved) {
-              log(chalk.gray(`  ↳ Dilewati oleh pengguna.\n`));
-              toolResultBlocks.push({
-                type: 'tool_result',
-                tool_use_id: block.id,
-                content: `SKIPPED: User chose to skip this action.`,
-              });
-              spinner.start();
-              continue;
-            }
-            spinner.start();
-          }
-          // ───────────────────────────────────────────────────────────
-
-          // Security: mask secrets from execution log
-          let logInputStr = JSON.stringify(block.input);
-          if (
-            (block.name === 'write_file' || block.name === 'edit_file') &&
-            block.input?.file_path
-          ) {
-            const lp = String(block.input.file_path).toLowerCase();
-            if (
-              lp.includes('.env') ||
-              lp.includes('secret') ||
-              lp.includes('key') ||
-              lp.includes('.pem')
-            ) {
-              logInputStr = JSON.stringify({
-                ...block.input,
-                content: '[MASKED]',
-                replacement_content: '[MASKED]',
-              });
-            }
-          }
-
-      logExecution(`TOOL_CALL: ${block.name} | Input: ${logInputStr}`);
-
-          const resultPayload = await handleToolCall(block.name, block.input ?? {});
-          
-          // Support multimodal results (arrays of content blocks)
-          let resultBlocks: any;
-          let resultStr: string;
-
-          try {
-            if (Array.isArray(resultPayload)) {
-              resultBlocks = resultPayload;
-              resultStr = JSON.stringify(resultBlocks);
-            } else {
-              resultStr = String(resultPayload);
-              resultBlocks = resultStr;
-            }
-          } catch (toolErr: unknown) {
-            resultStr = String(toolErr);
-            resultBlocks = resultStr;
-          }
-
-          // Truncate massive outputs to prevent Context Limit Exceeded
-          if (resultStr.length > 8000) {
-            resultStr = resultStr.substring(0, 4000) + "\n\n...[TRUNCATED BY CEOBE]...\n\n" + resultStr.substring(resultStr.length - 4000);
-            if (!Array.isArray(resultPayload)) {
-              resultBlocks = resultStr;
-            } else {
-              resultBlocks = [{ type: 'text', text: resultStr }];
-            }
-          }
-
-          // ── SELF-HEALING GATE ───────────────────────────────────────────────
-          // When execute_command returns a failure, annotate the result so the
-          // LLM understands it MUST fix the code — not just acknowledge the error.
-          if (block.name === 'execute_command' && isCommandFailure(resultStr)) {
-            selfHealCount++;
-            await markSelfHeal(); // Persist cycle count to .ceobe/ceobe-state.json
-            spinner.warn(
-              chalk.yellow(`[Self-Heal ${selfHealCount}/${MAX_SELF_HEAL}] Command failed. Requesting AI bug-fix...`)
-            );
-            spinner.start();
-            logExecution(`SELF_HEAL[${selfHealCount}/${MAX_SELF_HEAL}]: Command failure detected in tool '${block.name}'.`);
-
-            if (selfHealCount >= MAX_SELF_HEAL) {
-              throw new Error(
-                `[Self-Heal] Maximum autonomous repair cycles (${MAX_SELF_HEAL}) exceeded.\n` +
-                `Last failure output:\n${resultStr.substring(0, 1000)}`
-              );
-            }
-
-            // Shortened self-heal directive to save tokens
-            const healDirective = `\n\n[SELF-HEAL ${selfHealCount}/${MAX_SELF_HEAL}] Command FAILED. Fix the error above and retry.`;
-
-            // Gap 3 Fix: Clean up old SELF-HEAL messages to prevent accumulation
-            messages = messages.map(msg => {
-              if (msg.role === 'user' && Array.isArray(msg.content)) {
-                return {
-                  ...msg,
-                  content: msg.content.map((c: any) => {
-                    if (c.type === 'tool_result' && typeof c.content === 'string') {
-                       return { ...c, content: c.content.replace(/\[SELF-HEAL \d+\/\d+\].*/g, '[Older Self-Heal Omitted]') };
-                    }
-                    return c;
-                  })
-                };
-              }
-              return msg;
-            });
-
-            resultBlocks = resultStr + healDirective;
-          }
-          // ───────────────────────────────────────────────────────────────────
-
-          logExecution(
-            `TOOL_RESULT: ${resultStr.substring(0, 200)}${resultStr.length > 200 ? '...' : ''}`
+        if (result.hasCommandFailure) {
+          spinner.warn(
+            chalk.yellow(`[Self-Heal ${commandHealCount}/${MAX_SELF_HEAL}] Command failed. Requesting AI bug-fix...`)
           );
-
-          // Mark file as complete for state resume
-          if (
-            (block.name === 'write_file' || block.name === 'edit_file') &&
-            block.input?.file_path
-          ) {
-            await markFileComplete(String(block.input.file_path));
+          spinner.start();
+          
+          if (commandHealCount >= MAX_SELF_HEAL) {
+            throw new Error(`[Self-Heal] Maximum autonomous repair cycles (${MAX_SELF_HEAL}) exceeded.`);
           }
 
-          toolResultBlocks.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: resultBlocks,
-          });
+          const healDirective = `\n\n[SELF-HEAL ${commandHealCount}/${MAX_SELF_HEAL}] Command FAILED. Fix the error above and retry.`;
+          messages = cleanupOldSelfHeals(messages);
+
+          const lastResult = toolResultBlocks[toolResultBlocks.length - 1];
+          if (lastResult && lastResult.type === 'tool_result' && typeof lastResult.content === 'string') {
+            lastResult.content += healDirective;
+          }
         }
         
         if (hasFinishTask) {
-           isThinking = false;
-           spinner.succeed(chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) called finish_task. Execution complete.`));
-           log(chalk.cyan('\n--- Final Response ---\n'));
-           if (textBlock?.text) log(textBlock.text);
-           log(chalk.cyan('\n----------------------\n'));
+           if (toolResultBlocks.length > 0) {
+             spinner.warn(chalk.yellow(`[Warning] Model mixed finish_task with other tools. Forcing one more turn for verification.`));
+             toolResultBlocks.push({
+               type: 'text' as const,
+               text: 'You called finish_task along with other tools. Here are the results of those tools. Please verify them. If everything is complete, call finish_task AGAIN by itself.'
+             } as any);
+           } else {
+             isThinking = false;
+             spinner.succeed(chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) called finish_task. Execution complete.`));
+             log(chalk.cyan('\n--- Final Response ---\n'));
+             if (textBlock?.text) log(textBlock.text);
+             log(chalk.cyan('\n----------------------\n'));
+             
+             const finishTaskTool = toolCalls.find(t => t.name === 'finish_task');
+             if (finishTaskTool) {
+               messages.push({
+                 role: 'user',
+                 content: [{
+                   type: 'tool_result',
+                   tool_use_id: finishTaskTool.id,
+                   name: finishTaskTool.name,
+                   content: 'Task marked as finished successfully.'
+                 }] as any
+               });
+             }
+           }
         }
 
         if (toolResultBlocks.length > 0) {
@@ -362,7 +208,6 @@ If you need architectural or design context, use read_file to read .ceobe/archit
         }
       }
       
-      // Enforce Budget Limit (if set)
       checkBudget(env.CEOBE_MAX_BUDGET);
     }
 
@@ -379,5 +224,48 @@ If you need architectural or design context, use read_file to read .ceobe/archit
       'utf8'
     );
     throw error;
+  } finally {
+    for (const [id, child] of activeBackgroundProcesses.entries()) {
+      child.kill('SIGKILL');
+      activeBackgroundProcesses.delete(id);
+    }
+  }
+}
+
+export async function executeWaves(planMarkdown: string, selectedSkills: string[] = [], execFeedback: string = ''): Promise<void> {
+  const finalTask = planMarkdown;
+  const waves = parseTaskWaves(finalTask);
+  const totalTasks = waves.reduce((sum, w) => sum + w.tasks.length, 0);
+
+  if (waves.length > 1) {
+    log(chalk.cyan(`\n[Parallel Executor] Plan dipecah menjadi ${waves.length} gelombang eksekusi.`));
+    log(chalk.dim(`  Total task: ${totalTasks} | Paralel per gelombang: max ${Math.max(...waves.map(w => w.tasks.length))}\n`));
+  }
+
+  for (const wave of waves) {
+    if (wave.tasks.length > 1) {
+      log(chalk.magenta(`\n[Parallel Executor] Gelombang ${wave.wave} — ${wave.tasks.length} task berjalan paralel...`));
+      const waveResults = await Promise.allSettled(
+        wave.tasks.map(waveTask =>
+          executePlan(
+            waveTask.content + (execFeedback ? `\n\n[URGENT: FIX THESE ERRORS FROM PREVIOUS RUN]\n${execFeedback}` : ''),
+            selectedSkills
+          )
+        )
+      );
+      const failures = waveResults.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      if (failures.length > 0) {
+        failures.forEach(f => {
+          const msg = f.reason ? String(f.reason) : '';
+          log(chalk.red(`  [Wave ${wave.wave}] Task gagal: ${msg.substring(0, 120)}`));
+        });
+        throw new Error(`Wave ${wave.wave} execution failed. Aborting pipeline.`);
+      } else {
+        log(chalk.green(`  [Wave ${wave.wave}] Semua task selesai.`));
+      }
+    } else if (wave.tasks.length === 1) {
+      log(chalk.blue(`\n[Parallel Executor] Gelombang ${wave.wave} — 1 task (sequential).`));
+      await executePlan(wave.tasks[0].content + (execFeedback ? `\n\n[FIX ERRORS]\n${execFeedback}` : ''), selectedSkills);
+    }
   }
 }

@@ -19,6 +19,10 @@ export interface PluginDefinition {
 // Global registry for loaded plugins
 export const loadedPlugins = new Map<string, PluginDefinition>();
 
+export function clearLoadedPlugins() {
+  loadedPlugins.clear();
+}
+
 export async function loadDynamicTools(projectDir: string): Promise<NormalizedTool[]> {
   const pluginsDir = path.join(projectDir, '.ceobe', 'plugins');
   if (!fs.existsSync(pluginsDir)) {
@@ -51,7 +55,26 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
   for (const file of pluginFiles) {
     try {
       const fullPath = path.join(pluginsDir, file);
-      const fileUrl = pathToFileURL(fullPath).href;
+      const realPath = fs.realpathSync(fullPath);
+      const realPluginsDir = fs.realpathSync(pluginsDir);
+      
+      if (!realPath.startsWith(realPluginsDir)) {
+         log(chalk.red(`[PluginLoader] ❌ Keamanan: Plugin ${file} berada di luar direktori plugins. Diabaikan.`));
+         continue;
+      }
+
+      const fileUrl = pathToFileURL(realPath).href;
+      
+      const { confirmToolCall } = await import('../../utils/modeManager');
+      const { getActiveMode } = await import('../../utils/modeManager');
+      if (getActiveMode() === 'ask') {
+         log(chalk.yellow(`[PluginLoader] ⚠️ Keamanan: Meminta izin untuk memuat plugin eksternal '${file}'...`));
+         const approved = await confirmToolCall('load_plugin', { file, path: realPath });
+         if (!approved) {
+           log(chalk.red(`[PluginLoader] ❌ Ditolak oleh pengguna. Plugin '${file}' tidak dimuat.`));
+           continue;
+         }
+      }
       
       // Dynamic import
       const module = await import(fileUrl);

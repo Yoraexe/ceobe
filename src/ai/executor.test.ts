@@ -8,8 +8,9 @@ vi.mock('./providers/router', () => ({
   createExecutorAdapter: vi.fn(),
 }));
 vi.mock('./tools/systemTools', () => ({
-  tools: [],
+  tools: [{ name: 'mock_tool', description: 'mock', input_schema: { type: 'object', properties: {}, required: [] } }],
   handleToolCall: vi.fn(),
+  activeBackgroundProcesses: new Map()
 }));
 vi.mock('ora', () => ({
   default: () => ({ start: vi.fn().mockReturnThis(), text: '', succeed: vi.fn(), fail: vi.fn() }),

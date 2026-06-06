@@ -8,9 +8,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { env } from '../../config/env';
+
 import { createEmbeddingAdapter } from '../providers/embeddingAdapter';
 import { saveEmbeddings, CodeChunk, loadEmbeddings } from './vectorStore';
+import { getProjectDir } from '../../utils/context';
 import chalk from 'chalk';
 import ora from 'ora';
 import { extractTypeScriptSignatures, isTypeScriptFile, AST_COMPRESSION_THRESHOLD } from './astParser';
@@ -27,7 +28,7 @@ interface FileCache {
 }
 
 function getCacheFilePath(): string {
-  return path.join(env.TARGET_PROJECT_DIR, '.ceobe', 'indexer-cache.json');
+  return path.join(getProjectDir(), '.ceobe', 'indexer-cache.json');
 }
 
 function loadCache(): FileCache {
@@ -81,7 +82,7 @@ export async function getEmbedding(text: string): Promise<number[]> {
 }
 
 export async function indexWorkspace(): Promise<void> {
-  const workspaceRoot = path.resolve(env.TARGET_PROJECT_DIR);
+  const workspaceRoot = path.resolve(getProjectDir());
   const spinner = ora('Scanning workspace files...').start();
   
   try {

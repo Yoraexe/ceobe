@@ -17,7 +17,30 @@ vi.mock('../utils/stateManager', () => ({
 vi.mock('./memory/indexer', () => ({
   indexWorkspace: vi.fn().mockResolvedValue(undefined)
 }));
+vi.mock('../utils/costTracker', () => ({
+  resetSession: vi.fn(),
+  printCostSummary: vi.fn()
+}));
+vi.mock('../utils/gitManager', () => ({
+  createSnapshot: vi.fn(),
+  rollbackToSnapshot: vi.fn()
+}));
+vi.mock('./taskParser', () => ({
+  parseTaskWaves: vi.fn().mockImplementation((finalTask: string) => [{ wave: 1, tasks: [{ title: 'task', content: finalTask }] }])
+}));
+vi.mock('../utils/context', () => ({
+  getProjectDir: vi.fn().mockReturnValue('/mock'),
+  log: vi.fn(),
+  executionContext: {
+    getStore: vi.fn().mockReturnValue({ snapshots: new Map() })
+  }
+}));
+vi.mock('../utils/contextLoader', () => ({
+  readCeobeRules: vi.fn().mockReturnValue('mock rules'),
+  readSpecificSkills: vi.fn().mockReturnValue('mock skills')
+}));
 vi.mock('child_process', () => ({
+  spawn: vi.fn(),
   exec: vi.fn((_cmd, _opts, cb) => cb(null, { stdout: 'mock stdout', stderr: '' }))
 }));
 
@@ -56,8 +79,8 @@ describe('supervisor', () => {
     
     expect(planner.generateBRD).toHaveBeenCalledTimes(1);
     expect(planner.generateDesignSpec).toHaveBeenCalledTimes(1);
-    expect(executor.executePlan).toHaveBeenCalledTimes(1);
-    expect(executor.executePlan).toHaveBeenCalledWith('task5\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\ndevops4', []);
+    expect(executor.executeWaves).toHaveBeenCalledTimes(1);
+    expect(executor.executeWaves).toHaveBeenCalledWith('task5\n\n[DEVOPS REQUIREMENTS]\nYou MUST ALSO implement the following DevOps infrastructure:\ndevops4', [], '');
     expect(planner.generateDevOpsConfig).toHaveBeenCalledTimes(1);
   });
 
@@ -79,15 +102,16 @@ describe('supervisor', () => {
     expect(planner.generateBRD).toHaveBeenCalledTimes(2);
     // Second call should pass feedback
     expect(planner.generateBRD).toHaveBeenNthCalledWith(2, 'test desc', [], 'fix this');
-    expect(executor.executePlan).toHaveBeenCalledTimes(1);
+    expect(executor.executeWaves).toHaveBeenCalledTimes(1);
   });
 
   it('should abort after MAX_RETRIES (3) failures', async () => {
     vi.spyOn(planner, 'selectRelevantSkills').mockResolvedValue([]);
+    let c = 0;
     vi.spyOn(planner, 'generateBRD').mockImplementation(async () => `brd${++c}`);
     vi.spyOn(planner, 'generateDesignSpec').mockImplementation(async () => `design${++c}`);
     vi.spyOn(planner, 'generateArchitecture').mockImplementation(async () => `arch${++c}`);
-    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `task${++c}`);
+    vi.spyOn(planner, 'generateImplementationPlan').mockImplementation(async () => `impl${++c}`);
     vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     
     // Always fail
@@ -97,7 +121,7 @@ describe('supervisor', () => {
     
     // 1 initial try + 3 retries = 4 times
     expect(planner.generateBRD).toHaveBeenCalledTimes(4);
-    expect(executor.executePlan).not.toHaveBeenCalled();
+    expect(executor.executeWaves).not.toHaveBeenCalled();
   });
 
   it('should ask for confirmation if askBeforeExecute is true and proceed if yes', async () => {
@@ -114,7 +138,7 @@ describe('supervisor', () => {
     await runAutonomousLoop('test desc', true);
     
     expect(mockQuestion).toHaveBeenCalled();
-    expect(executor.executePlan).toHaveBeenCalledTimes(1);
+    expect(executor.executeWaves).toHaveBeenCalledTimes(1);
   });
 
   it('should ask for confirmation and abort if no', async () => {

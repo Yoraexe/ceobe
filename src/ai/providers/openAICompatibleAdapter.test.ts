@@ -26,7 +26,7 @@ describe('OpenAICompatibleAdapter', () => {
     env.OPENAI_API_KEY = 'test';
     const adapter = new OpenAICompatibleAdapter('openai', 'gpt-4', 'key', 'http://base');
     const result = await adapter.generate('hello');
-    expect(result).toBe('mock openai text');
+    expect((result as any).text).toBe('mock openai text');
   });
 
   it('should chat', async () => {

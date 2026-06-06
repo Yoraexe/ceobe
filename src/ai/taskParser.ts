@@ -27,12 +27,12 @@ export interface TaskWave {
  */
 function hasDependencyKeyword(text: string): boolean {
   const DEPENDENCY_SIGNALS = [
-    'after', 'once', 'requires', 'depends on', 'using the', 'based on',
+    'requires task', 'depends on', 'using the module', 'based on task',
     'integrate with', 'connect to the', 'import from', 'use the service',
-    'after completing', 'after the', 'when the',
-    'setelah', 'setelah selesai', 'menggunakan', 'berdasarkan', 'integrasi',
+    'after completing', 'after the', 'when the task', 'dependent on',
+    'setelah task', 'setelah selesai', 'membutuhkan', 'bergantung pada', 'integrasi dengan',
   ];
-  return DEPENDENCY_SIGNALS.some(sig => text.includes(sig));
+  return DEPENDENCY_SIGNALS.some(sig => new RegExp(`\\b${sig}\\b`, 'i').test(text));
 }
 
 /**
@@ -42,10 +42,10 @@ function isAlwaysParallel(text: string): boolean {
   const INDEPENDENT_SIGNALS = [
     'documentation', 'readme', 'dockerfile', 'docker-compose',
     '.gitignore', 'license', 'env.example', '.env.example',
-    'unit test', 'unit tests', 'write test', 'add test',
+    'write unit test', 'add unit test', 'unit tests', 'write test', 'add test',
     'dokumentasi', 'dokumen', 'tulis test',
   ];
-  return INDEPENDENT_SIGNALS.some(sig => text.includes(sig));
+  return INDEPENDENT_SIGNALS.some(sig => new RegExp(`\\b${sig.replace(/\\./g, '\\.')}\\b`, 'i').test(text));
 }
 
 /**
@@ -68,7 +68,7 @@ export function parseTaskWaves(taskMarkdown: string): TaskWave[] {
   const rawTasks = taskMarkdown
     .split(/\n(?=#{1,3}\s|\d+\.\s|\-\s\[)/)
     .map(block => block.trim())
-    .filter(block => block.length > 20); // Skip empty / very short blocks
+    .filter(block => block.length > 10); // Skip empty / very short blocks
 
   if (rawTasks.length === 0) {
     // No structured tasks found — treat entire plan as a single task

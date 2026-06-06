@@ -44,8 +44,9 @@ export class MessageQueue {
       const task = this.queue.shift()!;
       try {
         await task();
-      } catch {
-        // Individual task errors are handled inside the task itself.
+      } catch (e: unknown) {
+        // Individual task errors are handled inside the task itself, but we log it just in case
+        console.error(`[MessageQueue] Background task failed: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 

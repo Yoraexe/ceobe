@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { env } from '../config/env';
 import chalk from 'chalk';
+import { log } from './context';
 
 /**
  * Reads all .md files from a given directory and returns their concatenated content.
@@ -19,7 +20,7 @@ function readAllFromDir(dirPath: string, extension: string = '.md'): string {
       content += fs.readFileSync(fullPath, 'utf-8');
       content += `\n-----------------------\n`;
     } catch (err) {
-      console.error(chalk.red(`Failed to read ${fullPath}`), err);
+      log(chalk.red(`Failed to read ${fullPath}`) + ' ' + String(err));
     }
   }
   return content;
@@ -40,7 +41,7 @@ export function readCeobeRules(): string {
     
     return combinedRules;
   } catch (err) {
-    console.error(chalk.red('Failed to load base Ceobe rules'), err);
+    log(chalk.red('Failed to load base Ceobe rules') + ' ' + String(err));
     return '';
   }
 }
@@ -88,10 +89,10 @@ export function readTemplate(templateName: string): string {
     if (fs.existsSync(templatePath)) {
       return fs.readFileSync(templatePath, 'utf-8');
     }
-    console.warn(chalk.yellow(`Warning: Template ${templateName} not found. Proceeding without it.`));
+    log(chalk.yellow(`Warning: Template ${templateName} not found. Proceeding without it.`));
     return '';
   } catch (err) {
-    console.error(chalk.red(`Failed to load template ${templateName}`), err);
+    log(chalk.red(`Failed to load template ${templateName}`) + ' ' + String(err));
     return '';
   }
 }

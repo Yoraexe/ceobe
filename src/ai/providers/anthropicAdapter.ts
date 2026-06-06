@@ -29,7 +29,7 @@ export class AnthropicAdapter implements IProviderAdapter {
     });
   }
 
-  async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<string> {
+  async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<{ text: string; usage?: { input_tokens?: number; output_tokens?: number } }> {
     const isArray = Array.isArray(prompt);
     const hasExplicitCache = isArray && (prompt as NormalizedContentBlock[]).some(b => b.cache_control);
 
@@ -69,13 +69,15 @@ export class AnthropicAdapter implements IProviderAdapter {
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.modelId,
-        max_tokens: 8192,
+        max_tokens: env.CEOBE_MAX_TOKENS,
         temperature,
         messages: [{ role: 'user', content }] as Anthropic.MessageParam[],
       })
     );
     const block = response.content.find(c => c.type === 'text') as Anthropic.TextBlock | undefined;
-    return (block?.text || '').trim();
+    const text = (block?.text || '').trim();
+    const usage = response.usage ? { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens } : undefined;
+    return { text, usage };
   }
 
   async chat(
@@ -112,7 +114,7 @@ export class AnthropicAdapter implements IProviderAdapter {
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.modelId,
-        max_tokens: 8192,
+        max_tokens: env.CEOBE_MAX_TOKENS,
         temperature: 0,
         system: system,
         messages: anthropicMessages as Anthropic.MessageParam[],

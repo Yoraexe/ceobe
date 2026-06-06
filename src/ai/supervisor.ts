@@ -9,18 +9,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
-import * as readline from 'readline';
-import { getProjectDir, log } from '../utils/context';
+import { getProjectDir, log, executionContext } from '../utils/context';
 import { selectRelevantSkills, generateBRD, generateDesignSpec, generateArchitecture, generateImplementationPlan, generateDevOpsConfig, auditPlan, AuditResult } from './planner';
-import { executePlan } from './executor';
+import { executeWaves } from './executor';
 import { markPhaseComplete, readState, getCompletedFiles } from '../utils/stateManager';
 import { indexWorkspace } from './memory/indexer';
-import { activeBackgroundProcesses } from './tools/systemTools';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import * as crypto from 'crypto';
 import { createSnapshot, rollbackToSnapshot } from '../utils/gitManager';
-import { parseTaskWaves } from './taskParser';
+import { askUserConfirmation, handleSessionResume, cleanupBackgroundProcesses, runPolyglotVerification } from './utils/loopHandlers';
+
 import { resetSession, printCostSummary } from '../utils/costTracker';
 import type { NormalizedContentBlock } from './providers/types';
 
@@ -29,21 +26,31 @@ interface DocSnapshot {
   timestamp: number;
   version: number;
 }
-const snapshots = new Map<string, DocSnapshot>();
+const globalSnapshots = new Map<string, DocSnapshot>();
+
+function getSnapshotsMap(): Map<string, DocSnapshot> {
+  const ctx = executionContext.getStore();
+  if (ctx) {
+    if (!ctx.snapshots) ctx.snapshots = new Map();
+    return ctx.snapshots;
+  }
+  return globalSnapshots;
+}
 
 export function getDocHash(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
 export function computeChangedDocs(currentDocs: Record<string, string>, reset: boolean = false): string[] {
-  if (reset) snapshots.clear();
+  const snapshotsMap = getSnapshotsMap();
+  if (reset) snapshotsMap.clear();
   const changed: string[] = [];
   for (const [docName, content] of Object.entries(currentDocs)) {
     const currentHash = getDocHash(content);
-    const prev = snapshots.get(docName);
+    const prev = snapshotsMap.get(docName);
     if (!prev || prev.hash !== currentHash) {
       changed.push(docName);
-      snapshots.set(docName, {
+      snapshotsMap.set(docName, {
         hash: currentHash,
         timestamp: Date.now(),
         version: (prev?.version ?? 0) + 1
@@ -53,23 +60,7 @@ export function computeChangedDocs(currentDocs: Record<string, string>, reset: b
   return changed;
 }
 
-const execAsync = promisify(exec);
-
 const MAX_RETRIES = 3;
-
-function askUserConfirmation(question: string): Promise<boolean> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-
-  return new Promise(resolve => {
-    rl.question(chalk.yellow(question + ' [y/N]: '), answer => {
-      rl.close();
-      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
-    });
-  });
-}
 
 export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
   resetSession();
@@ -87,19 +78,7 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
   const devopsPath = path.join(ceobeDir, `${prefix}devops.md`);
 
   try {
-    const currentState = await readState();
-    let startingPhase = 'plan';
-    
-    if (currentState && currentState.currentPhase !== 'done' && !isFeature) {
-      log(chalk.yellow(`\n[Supervisor] Found incomplete run. Phase: ${currentState.currentPhase}`));
-      const proceed = await askUserConfirmation('Do you want to resume this run?');
-      if (proceed) {
-        startingPhase = currentState.currentPhase;
-      } else {
-        log(chalk.yellow('Starting a fresh run instead...'));
-        // We could delete state, but proceeding with 'plan' will overwrite it.
-      }
-    }
+    const startingPhase = await handleSessionResume(isFeature);
 
     const selectedSkills = await selectRelevantSkills(description);
     
@@ -147,29 +126,29 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
 
         // Step 1: Generate Plans
         if (regenBRD) {
-          brd = await generateBRD(description, selectedSkills, feedback);
-          fs.writeFileSync(brdPath, brd);
+          const res = await generateBRD(description, selectedSkills, feedback);
+          if (res.trim()) { brd = res; fs.writeFileSync(brdPath, brd); }
         }
 
         if (regenDesign) {
-          design = await generateDesignSpec(brd, selectedSkills, feedback);
-          fs.writeFileSync(designPath, design);
+          const res = await generateDesignSpec(brd, selectedSkills, feedback);
+          if (res.trim()) { design = res; fs.writeFileSync(designPath, design); }
         }
 
         if (regenArch) {
-          arch = await generateArchitecture(brd, design, selectedSkills, feedback);
-          fs.writeFileSync(archPath, arch);
+          const res = await generateArchitecture(brd, design, selectedSkills, feedback);
+          if (res.trim()) { arch = res; fs.writeFileSync(archPath, arch); }
         }
 
         // Generate DevOps Config BEFORE execution so Claude can build the infrastructure
         if (regenDevops) {
-          devops = await generateDevOpsConfig(arch, '', selectedSkills, feedback);
-          fs.writeFileSync(devopsPath, devops);
+          const res = await generateDevOpsConfig(arch, '', selectedSkills, feedback);
+          if (res.trim()) { devops = res; fs.writeFileSync(devopsPath, devops); }
         }
 
         if (regenTask) {
-          task = await generateImplementationPlan(arch, selectedSkills, feedback);
-          fs.writeFileSync(taskPath, task);
+          const res = await generateImplementationPlan(arch, selectedSkills, feedback);
+          if (res.trim()) { task = res; fs.writeFileSync(taskPath, task); }
         }
         
         await markPhaseComplete('design', 'audit'); // Mark phase complete after successful planning
@@ -258,6 +237,10 @@ ${feedback}
       // ── Git Snapshot ─────────────────────────────────────────────────────────
       log(chalk.blue(`\n[GitManager] Membuat snapshot sebelum eksekusi AI...`));
       const snapshotHash = await createSnapshot();
+      if (snapshotHash) {
+        const { saveSnapshotHash } = await import('../utils/stateManager');
+        await saveSnapshotHash(snapshotHash);
+      }
       // ─────────────────────────────────────────────────────────────────────────
 
       while (!isCodeValid && executionRetry <= MAX_RETRIES) {
@@ -276,125 +259,15 @@ ${feedback}
            finalTask += `\n\n[ALREADY COMPLETED FILES]\nThe following files were ALREADY created in a previous run. DO NOT recreate them unless you need to fix an error. Just skip to the uncompleted items:\n${completedFiles.map(f => `- ${f}`).join('\n')}`;
         }
         
-        if (execFeedback) {
-           finalTask += `\n\n[URGENT: FIX THESE ERRORS FROM PREVIOUS RUN]\n${execFeedback}`;
-        }
-        
         // ── Multi-Agent Parallel Execution ────────────────────────────────────────────
-        const waves = parseTaskWaves(finalTask);
-        const totalTasks = waves.reduce((sum, w) => sum + w.tasks.length, 0);
-
-        if (waves.length > 1) {
-          log(chalk.cyan(`\n[Parallel Executor] Plan dipecah menjadi ${waves.length} gelombang eksekusi.`));
-          log(chalk.dim(`  Total task: ${totalTasks} | Paralel per gelombang: max ${Math.max(...waves.map(w => w.tasks.length))}\n`));
-        }
-
-        for (const wave of waves) {
-          if (wave.tasks.length > 1) {
-            log(chalk.magenta(`\n[Parallel Executor] Gelombang ${wave.wave} — ${wave.tasks.length} task berjalan paralel...`));
-            // Execute all tasks in this wave concurrently
-            const waveResults = await Promise.allSettled(
-              wave.tasks.map(waveTask =>
-                executePlan(
-                  waveTask.content + (execFeedback ? `\n\n[FIX ERRORS]\n${execFeedback}` : ''),
-                  selectedSkills
-                )
-              )
-            );
-            // Abort pipeline if a wave fails
-            const failures = waveResults.filter(r => r.status === 'rejected');
-            if (failures.length > 0) {
-              failures.forEach(f => {
-                const msg = f.status === 'rejected' ? String(f.reason) : '';
-                log(chalk.red(`  [Wave ${wave.wave}] Task gagal: ${msg.substring(0, 120)}`));
-              });
-              throw new Error(`Wave ${wave.wave} execution failed. Aborting pipeline.`);
-            } else {
-              log(chalk.green(`  [Wave ${wave.wave}] Semua task selesai.`));
-            }
-          } else {
-            // Single task in wave — run sequentially as before
-            log(chalk.blue(`\n[Parallel Executor] Gelombang ${wave.wave} — 1 task (sequential).`));
-            await executePlan(wave.tasks[0].content, selectedSkills);
-          }
-        }
+        await executeWaves(finalTask, selectedSkills, execFeedback);
         // ───────────────────────────────────────────────────────────────────────
         await markPhaseComplete('execute', 'verify');
 
         log(chalk.blue(`\n[Supervisor] Running Post-Execution Verification (Quality Layer)...`));
         
         try {
-          // Check TypeScript compilation
-          const hasTsconfig = fs.existsSync(path.join(getProjectDir(), 'tsconfig.json'));
-          if (hasTsconfig) {
-            log(chalk.gray(`Running: npx tsc --noEmit`));
-            await execAsync('npx tsc --noEmit', { cwd: getProjectDir(), timeout: 120000 });
-          }
-
-          // Check Tests if vitest/jest is available in package.json
-          const pkgJsonPath = path.join(getProjectDir(), 'package.json');
-          if (fs.existsSync(pkgJsonPath)) {
-             const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-             if (pkgJson.devDependencies?.vitest || pkgJson.dependencies?.vitest) {
-                log(chalk.gray(`Running: npx vitest run --passWithNoTests`));
-                await execAsync('npx vitest run --passWithNoTests', { cwd: getProjectDir(), timeout: 120000 });
-             }
-          }
-          
-          // Polyglot: Go
-          if (fs.existsSync(path.join(getProjectDir(), 'go.mod'))) {
-             log(chalk.gray(`Running: go build ./...`));
-             await execAsync('go build ./...', { cwd: getProjectDir(), timeout: 120000 });
-             log(chalk.gray(`Running: go test ./...`));
-             await execAsync('go test ./...', { cwd: getProjectDir(), timeout: 120000 });
-          }
-          
-          // Polyglot: Rust
-          if (fs.existsSync(path.join(getProjectDir(), 'Cargo.toml'))) {
-             log(chalk.gray(`Running: cargo check`));
-             await execAsync('cargo check', { cwd: getProjectDir(), timeout: 120000 });
-             log(chalk.gray(`Running: cargo test`));
-             await execAsync('cargo test', { cwd: getProjectDir(), timeout: 120000 });
-          }
-          
-          // Polyglot: PHP/Laravel
-          if (fs.existsSync(path.join(getProjectDir(), 'composer.json'))) {
-             try {
-                log(chalk.gray(`Running: composer validate`));
-                await execAsync('composer validate --no-check-all', { cwd: getProjectDir(), timeout: 120000 });
-             } catch (error: unknown) {
-                // Ignore if composer not installed globally
-             }
-             
-             if (fs.existsSync(path.join(getProjectDir(), 'artisan'))) {
-                log(chalk.gray(`Running: php artisan about`));
-                try {
-                   await execAsync('php artisan about', { cwd: getProjectDir(), timeout: 120000 });
-                } catch (error: unknown) {
-                   const msg = error instanceof Error ? error.message : String(error);
-                   if (!msg.includes('not recognized') && !msg.includes('not found')) {
-                      throw error;
-                   }
-                }
-             }
-          }
-          
-          // Polyglot: Python
-          if (fs.existsSync(path.join(getProjectDir(), 'requirements.txt')) || fs.existsSync(path.join(getProjectDir(), 'pyproject.toml'))) {
-             log(chalk.gray(`Running: python -m compileall .`));
-             await execAsync('python -m compileall .', { cwd: getProjectDir(), timeout: 120000 });
-             // Attempt pytest if exists, but don't fail if command not found
-             try {
-                log(chalk.gray(`Running: pytest (if available)`));
-                await execAsync('pytest', { cwd: getProjectDir(), timeout: 120000 });
-             } catch (pytestErr: unknown) {
-                // Only fail if pytest actually ran and tests failed. If command not found, ignore.
-                const msg = pytestErr instanceof Error ? pytestErr.message : String(pytestErr);
-                if ((pytestErr as { stdout?: string }).stdout && !msg.includes('not recognized') && !msg.includes('not found')) {
-                   throw pytestErr;
-                }
-             }
-          }
+          await runPolyglotVerification(getProjectDir());
 
           isCodeValid = true;
           log(chalk.green(`\n✅ [Supervisor] Code Verification Passed! No compilation or test errors.`));
@@ -441,15 +314,8 @@ ${feedback}
 
   } catch (err: unknown) {
     log(chalk.red('\n[Supervisor Error] Autonomous loop crashed.'));
-    log(String(err));
+    log(err instanceof Error ? err.stack || err.message : String(err));
   } finally {
-    // Cleanup any zombie background processes
-    if (activeBackgroundProcesses.size > 0) {
-       log(chalk.yellow(`\n[Supervisor] Cleaning up ${activeBackgroundProcesses.size} background processes...`));
-       for (const [id, child] of activeBackgroundProcesses.entries()) {
-          child.kill(); // Default to SIGTERM for cross-platform compatibility
-          activeBackgroundProcesses.delete(id);
-       }
-    }
+    await cleanupBackgroundProcesses();
   }
 }

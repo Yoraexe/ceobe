@@ -29,17 +29,16 @@ export async function withRetry<T>(
       if (status && status >= 400 && status < 500 && status !== 429) {
         throw error;
       }
-      if (/\b(?:400|401|403|404)\b/.test(msg)) {
-        throw error;
-      }
+
 
       if (attempt >= maxRetries) {
         throw error;
       }
       
-      log(chalk.yellow(`\n[Retry] Operation failed (${msg}). Retrying in ${delay}ms... (Attempt ${attempt}/${maxRetries})`));
+      log(chalk.yellow(`\n[Retry] Operation failed (${msg}). Retrying in ${Math.round(delay)}ms... (Attempt ${attempt}/${maxRetries})`));
       await new Promise(resolve => setTimeout(resolve, delay));
-      delay *= 2; // Exponential backoff
+      const jitter = Math.random() * 500;
+      delay = Math.min(delay * 2 + jitter, 60000); // Exponential backoff with jitter and 60s cap
     }
   }
 }

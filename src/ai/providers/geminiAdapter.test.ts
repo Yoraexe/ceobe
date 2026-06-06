@@ -19,7 +19,7 @@ describe('GeminiAdapter', () => {
   it('should instantiate and generate content', async () => {
     const adapter = new GeminiAdapter('gemini-mock');
     const result = await adapter.generate('hello');
-    expect(result).toBe('mock gemini response');
+    expect((result as any).text).toBe('mock gemini response');
   });
 
   it('should support chat as a fallback to generate', async () => {

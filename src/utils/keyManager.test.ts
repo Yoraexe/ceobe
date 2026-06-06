@@ -1,17 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
-import * as os from 'os';
-import { readAllKeys, writeAllKeys, getKey, setKey, removeKey, findKeyDef, maskKey, printKeyTable } from './keyManager';
+import { readAllKeys, writeAllKeys, getKey, setKey, removeKey, findKeyDef } from './keyManager';
+import { maskKey, printKeyTable } from '../cli/utils/keyWizard';
 
 vi.mock('fs');
-vi.mock('os');
+vi.mock('os', () => {
+  return {
+    homedir: vi.fn(() => '/mock/home')
+  };
+});
 
 describe('keyManager', () => {
-  const mockHome = '/mock/home';
   
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(os.homedir).mockReturnValue(mockHome);
   });
 
   it('readAllKeys should return empty object if file does not exist', () => {

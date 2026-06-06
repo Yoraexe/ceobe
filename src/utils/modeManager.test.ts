@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as readline from 'readline';
-import { readConfig, writeConfig, setMode, printModeBadge, confirmToolCall, SENSITIVE_TOOLS } from './modeManager';
+import { readConfig, writeConfig, setMode, printModeBadge, confirmToolCall, SENSITIVE_TOOLS, clearConfigCacheForTesting } from './modeManager';
 
 vi.mock('fs');
 vi.mock('readline');
@@ -9,6 +9,7 @@ vi.mock('readline');
 describe('modeManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearConfigCacheForTesting();
   });
 
   it('readConfig should return default if file does not exist', () => {
@@ -52,6 +53,7 @@ describe('modeManager', () => {
     
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'ask' }));
+    clearConfigCacheForTesting();
     printModeBadge(); // ask
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('BERTANYA'));
     spy.mockRestore();
@@ -66,7 +68,8 @@ describe('modeManager', () => {
     it('should return true if user types y', async () => {
       const mockRl = {
         question: vi.fn().mockImplementation((_q, cb) => cb('y')),
-        close: vi.fn()
+        close: vi.fn(),
+        on: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
 
@@ -78,7 +81,8 @@ describe('modeManager', () => {
     it('should return false if user types n', async () => {
       const mockRl = {
         question: vi.fn().mockImplementation((_q, cb) => cb('n')),
-        close: vi.fn()
+        close: vi.fn(),
+        on: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
 
@@ -89,7 +93,8 @@ describe('modeManager', () => {
     it('should reject if user types a', async () => {
       const mockRl = {
         question: vi.fn().mockImplementation((_q, cb) => cb('a')),
-        close: vi.fn()
+        close: vi.fn(),
+        on: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
 
@@ -99,7 +104,8 @@ describe('modeManager', () => {
     it('should handle various tool summaries', async () => {
       const mockRl = {
         question: vi.fn().mockImplementation((_q, cb) => cb('y')),
-        close: vi.fn()
+        close: vi.fn(),
+        on: vi.fn()
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
 

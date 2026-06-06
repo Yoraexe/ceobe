@@ -50,14 +50,22 @@ function toOpenAIMessages(
         for (const tr of toolResults) {
           result.push({
             role: 'tool',
-            tool_call_id: tr.tool_use_id!,
+            tool_call_id: tr.tool_use_id || 'unknown',
             content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
           });
         }
-        // Handle plain text in user messages
-        const textBlocks = msg.content.filter((b) => b.type === 'text');
-        if (textBlocks.length > 0) {
-          result.push({ role: 'user', content: textBlocks.map((b) => b.text).join('\n') });
+        // Handle text and image blocks in user messages
+        const contentParts: OpenAI.Chat.ChatCompletionContentPart[] = [];
+        for (const block of msg.content) {
+          if (block.type === 'text' && block.text) {
+            contentParts.push({ type: 'text', text: block.text });
+          } else if (block.type === 'image' && block.source?.data) {
+            const dataUrl = `data:${block.source.media_type};base64,${block.source.data}`;
+            contentParts.push({ type: 'image_url', image_url: { url: dataUrl } });
+          }
+        }
+        if (contentParts.length > 0) {
+          result.push({ role: 'user', content: contentParts });
         }
       }
     } else if (msg.role === 'assistant') {
@@ -104,7 +112,7 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
     this.client = new OpenAI({ apiKey, baseURL });
   }
 
-  async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<string> {
+  async generate(prompt: string | NormalizedContentBlock[], temperature: number = 0.2): Promise<{ text: string; usage?: { input_tokens?: number; output_tokens?: number } }> {
     const contentStr = typeof prompt === 'string'
       ? prompt
       : prompt.filter(b => b.type === 'text').map(b => b.text).join('\n');
@@ -116,7 +124,9 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
         temperature,
       })
     );
-    return (response.choices[0]?.message?.content || '').trim();
+    const text = (response.choices[0]?.message?.content || '').trim();
+    const usage = response.usage ? { input_tokens: response.usage.prompt_tokens, output_tokens: response.usage.completion_tokens } : undefined;
+    return { text, usage };
   }
 
   async chat(
@@ -137,7 +147,10 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
       })
     );
 
-    const choice = response.choices[0];
+    const choice = response.choices?.[0];
+    if (!choice) {
+      throw new Error("Provider returned empty choices array.");
+    }
     const content: NormalizedContentBlock[] = [];
 
     if (choice.message.content) {
@@ -149,8 +162,9 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
           let parsedInput = {};
           try {
             parsedInput = JSON.parse(tc.function.arguments || '{}');
-          } catch (e) {
-            parsedInput = {};
+          } catch (e: any) {
+            console.error(`[OpenAIAdapter] Failed to parse tool arguments: ${e.message}`);
+            parsedInput = { _error: "Malformed JSON arguments", raw: tc.function.arguments };
           }
           content.push({
             type: 'tool_use',

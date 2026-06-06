@@ -39,7 +39,7 @@ export interface NormalizedTool {
   description: string;
   input_schema: {
     type: 'object';
-    properties: Record<string, { type: string; description: string }>;
+    properties: Record<string, any>; // JSON Schema properties
     required: string[];
   };
 }
@@ -64,5 +64,5 @@ export interface IProviderAdapter {
     tools: NormalizedTool[],
     systemInstruction: string
   ): Promise<NormalizedResponse>;
-  generate(prompt: string | NormalizedContentBlock[], temperature?: number): Promise<string>;
+  generate(prompt: string | NormalizedContentBlock[], temperature?: number): Promise<{ text: string; usage?: { input_tokens?: number; output_tokens?: number } }>;
 }

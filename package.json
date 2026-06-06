@@ -1,6 +1,6 @@
 {
   "name": "ceobe-mastery-cli",
-  "version": "1.11.4",
+  "version": "1.12.0",
   "main": "dist/index.js",
   "bin": {
     "ceobe": "./dist/index.js"

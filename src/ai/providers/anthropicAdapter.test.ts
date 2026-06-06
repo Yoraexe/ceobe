@@ -20,7 +20,7 @@ describe('AnthropicAdapter', () => {
     env.ANTHROPIC_API_KEY = 'test';
     const adapter = new AnthropicAdapter();
     const result = await adapter.generate('hello');
-    expect(result).toBe('mock anthropic text');
+    expect((result as any).text).toBe('mock anthropic text');
   });
 
   it('should chat', async () => {

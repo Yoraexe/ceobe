@@ -5,6 +5,9 @@ import { inspect } from 'util';
 export interface CeobeContext {
   projectPath: string;
   logger?: (msg: string) => void;
+  confirmationBridge?: any;
+  sessionUsage?: any[];
+  snapshots?: Map<string, { hash: string; timestamp: number; version: number; }>;
 }
 
 export const executionContext = new AsyncLocalStorage<CeobeContext>();

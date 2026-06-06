@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { computeChangedDocs } from '../supervisor';
+import { computeChangedDocs } from './supervisor';
 
 describe('Hash Convergence Guard', () => {
   beforeEach(() => {
