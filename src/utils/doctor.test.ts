@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runDoctor } from './doctor';
 import * as keyManager from './keyManager';
 import * as fs from 'fs';
-import { env } from '../config/env';
+import { env, reloadEnv } from '../config/env';
 
 vi.mock('fs');
 vi.mock('./keyManager');
@@ -28,8 +28,9 @@ describe('doctor', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     vi.spyOn(fs, 'statSync').mockReturnValue({ size: 2048 } as any);
     
-    env.CLOUDFLARE_ACCOUNT_ID = 'acc';
-    env.CLOUDFLARE_GATEWAY_ID = 'gw';
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'acc';
+    process.env.CLOUDFLARE_GATEWAY_ID = 'gw';
+    reloadEnv();
     
     await expect(runDoctor()).resolves.toBeUndefined();
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Ceobe Diagnostic Tool'));
@@ -39,7 +40,8 @@ describe('doctor', () => {
     vi.spyOn(keyManager, 'readAllKeys').mockReturnValue({});
     vi.spyOn(keyManager, 'getRequiredKeyForActiveProviders').mockReturnValue(['GEMINI_API_KEY', 'ANTHROPIC_API_KEY']);
     vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-    env.CLOUDFLARE_ACCOUNT_ID = '';
+    process.env.CLOUDFLARE_ACCOUNT_ID = '';
+    reloadEnv();
     
     await expect(runDoctor()).resolves.toBeUndefined();
   });

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { handleToolCall } from './systemTools';
-import { env } from '../../config/env';
+import { env, reloadEnv } from '../../config/env';
 import * as browser from '../../utils/browserAutomation';
 import * as vectorStore from '../memory/vectorStore';
 import * as indexer from '../memory/indexer';
@@ -110,14 +110,16 @@ describe('systemTools', () => {
       expect(result).toContain('No active service found');
     });
     it('execute_command should wrap in docker if sandbox enabled', async () => {
-      env.CEOBE_SANDBOX = 'docker';
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true); // mock go.mod exists
+      process.env.CEOBE_SANDBOX = 'docker';
+      reloadEnv();
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true); // mock go.mod foundexists
       
       mockExec.mockImplementationOnce((_cmd, _opts, cb) => cb(null, { stdout: 'docker out', stderr: '' }));
       await handleToolCall('execute_command', { command: 'go build' });
       expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('docker run --rm'), expect.anything(), expect.anything());
       
-      env.CEOBE_SANDBOX = 'none'; // reset
+      process.env.CEOBE_SANDBOX = 'none';
+      reloadEnv();
     });
   });
 });

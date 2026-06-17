@@ -112,7 +112,11 @@ export function loadEnv(): EnvConfig {
   return config;
 }
 
-export const env = loadEnv();
+export let env = Object.freeze(loadEnv());
+
+export function reloadEnv(): void {
+  env = Object.freeze(loadEnv());
+}
 
 /**
  * Constructs the Cloudflare AI Gateway URL for a given provider.

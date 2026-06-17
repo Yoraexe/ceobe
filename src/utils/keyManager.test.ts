@@ -6,9 +6,13 @@ import { maskKey, printKeyTable } from '../cli/utils/keyWizard';
 vi.mock('fs');
 vi.mock('os', () => {
   return {
-    homedir: vi.fn(() => '/mock/home')
+    homedir: vi.fn(() => '/mock/home'),
+    platform: vi.fn(() => 'linux')
   };
 });
+vi.mock('child_process', () => ({
+  execSync: vi.fn()
+}));
 
 describe('keyManager', () => {
   

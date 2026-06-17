@@ -8,6 +8,8 @@ export interface CeobeContext {
   confirmationBridge?: any;
   sessionUsage?: any[];
   snapshots?: Map<string, { hash: string; timestamp: number; version: number; }>;
+  stateCache?: any;
+  configCache?: any;
 }
 
 export const executionContext = new AsyncLocalStorage<CeobeContext>();

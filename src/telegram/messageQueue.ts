@@ -36,6 +36,15 @@ export class MessageQueue {
     return pendingCount;
   }
 
+  /**
+   * Waits until all currently enqueued and running tasks are finished.
+   */
+  async waitUntilDrained(): Promise<void> {
+    while (this.isBusy) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
   private async startWorker(): Promise<void> {
     if (this.isProcessing) return;
     this.isProcessing = true;

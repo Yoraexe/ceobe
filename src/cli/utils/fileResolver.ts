@@ -5,8 +5,15 @@ import { printError, info } from '../../ui/banner';
 
 export function resolveFileInput(filePath: string, description?: string): string | object[] {
   const abs = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+  
   if (!fs.existsSync(abs)) {
     printError('File tidak ditemukan', abs, `Periksa path file Anda`);
+    process.exit(1);
+  }
+
+  const rel = path.relative(process.cwd(), abs);
+  if (rel.startsWith('..') && !path.isAbsolute(filePath)) {
+    printError('Akses Ditolak', abs, `Path berada di luar direktori proyek saat ini`);
     process.exit(1);
   }
   const ext = path.extname(abs).toLowerCase();

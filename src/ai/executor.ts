@@ -5,7 +5,7 @@
 
 import { env } from '../config/env';
 import { createExecutorAdapter } from './providers/router';
-import type { NormalizedMessage, NormalizedTool } from './providers/types';
+import type { NormalizedMessage, NormalizedTool, NormalizedContentBlock } from './providers/types';
 import chalk from 'chalk';
 import ora from 'ora';
 import { tools as rawTools, activeBackgroundProcesses } from './tools/systemTools';
@@ -126,7 +126,11 @@ export async function executePlan(
           continue;
         }
       } else {
-        maxTokensRetries = 0;
+        // Only reset if we are confident the model is not alternating between max_tokens and normal stops
+        // By keeping a small buffer (decrementing instead of resetting to 0), we track sustained token bleeds.
+        if (maxTokensRetries > 0) {
+          maxTokensRetries--;
+        }
       }
 
       if (toolCalls.length === 0) {
@@ -180,7 +184,16 @@ export async function executePlan(
              toolResultBlocks.push({
                type: 'text' as const,
                text: 'You called finish_task along with other tools. Here are the results of those tools. Please verify them. If everything is complete, call finish_task AGAIN by itself.'
-             } as any);
+             } as NormalizedContentBlock);
+             const finishTaskTool = toolCalls.find(t => t.name === 'finish_task');
+             if (finishTaskTool) {
+               toolResultBlocks.push({
+                 type: 'tool_result',
+                 tool_use_id: finishTaskTool.id,
+                 name: finishTaskTool.name,
+                 content: 'Tool call ignored because it was mixed with other tools. Please verify the other tool results first.'
+               } as NormalizedContentBlock);
+             }
            } else {
              isThinking = false;
              spinner.succeed(chalk.green(`[${adapter.name.toUpperCase()}] (${adapter.modelId}) called finish_task. Execution complete.`));
@@ -197,7 +210,7 @@ export async function executePlan(
                    tool_use_id: finishTaskTool.id,
                    name: finishTaskTool.name,
                    content: 'Task marked as finished successfully.'
-                 }] as any
+                 }] as NormalizedContentBlock[]
                });
              }
            }

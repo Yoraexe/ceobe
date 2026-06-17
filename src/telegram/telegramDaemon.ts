@@ -46,7 +46,11 @@ function truncate(str: string, max: number): string {
   return str.length > max ? str.substring(0, max) + '...\n\n[Dipotong oleh bot]' : str;
 }
 
-export function startTelegramDaemon(): void {
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+export async function startTelegramDaemon(): Promise<void> {
   const keys = readAllKeys();
   const token = keys.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '';
   const allowedRaw = keys.TELEGRAM_ALLOWED_USERS || process.env.TELEGRAM_ALLOWED_USERS || '';
@@ -141,9 +145,8 @@ export function startTelegramDaemon(): void {
     if (queue.isBusy) {
       await bot.sendMessage(chatId, '⏳ Ceobe sedang mengerjakan tugas sebelumnya. Tugasmu sudah ditambahkan ke antrian.');
     } else {
-      const escapeMarkdown = (str: string) => str.replace(/([_*\[\]()~`])/g, '\\$1');
-      const safeText = escapeMarkdown(truncate(text, 300));
-      await bot.sendMessage(chatId, `📋 *Tugas diterima!*\n\n${safeText}\n\nCeobe mulai bekerja...`, { parse_mode: 'Markdown' });
+      const safeText = escapeHtml(truncate(text, 300));
+      await bot.sendMessage(chatId, `📋 <b>Tugas diterima!</b>\n\n${safeText}\n\nCeobe mulai bekerja...`, { parse_mode: 'HTML' });
     }
 
     queue.enqueue(async () => {
@@ -154,7 +157,7 @@ export function startTelegramDaemon(): void {
         if (logBuffer.length === 0) return;
         const chunk = logBuffer.splice(0, logBuffer.length).join('\n');
         try {
-          await bot.sendMessage(chatId, `\`\`\`\n${truncate(chunk, 3800)}\n\`\`\``, { parse_mode: 'Markdown' });
+          await bot.sendMessage(chatId, `<pre><code>${escapeHtml(truncate(chunk, 3800))}</code></pre>`, { parse_mode: 'HTML' });
         } catch {
           // Ignore Telegram rate limit / message errors silently
         }
@@ -186,11 +189,11 @@ export function startTelegramDaemon(): void {
 
           await runAutonomousLoop(text, getActiveMode() === 'ask', false);
           await sendLogs(); 
-          await bot.sendMessage(chatId, '🎉 *Pipeline selesai!* Codebase telah diperbarui oleh Ceobe.', { parse_mode: 'Markdown' });
+          await bot.sendMessage(chatId, '🎉 <b>Pipeline selesai!</b> Codebase telah diperbarui oleh Ceobe.', { parse_mode: 'HTML' });
         } catch (err: unknown) {
           await sendLogs();
           const msg = err instanceof Error ? err.message : String(err);
-          await bot.sendMessage(chatId, `❌ *Pipeline gagal.*\n\`\`\`\n${truncate(msg, 1000)}\n\`\`\``, { parse_mode: 'Markdown' });
+          await bot.sendMessage(chatId, `❌ <b>Pipeline gagal.</b>\n<pre><code>${escapeHtml(truncate(msg, 1000))}</code></pre>`, { parse_mode: 'HTML' });
         } finally {
           clearConfirmationBridge();
         }
@@ -198,9 +201,13 @@ export function startTelegramDaemon(): void {
     });
   });
 
-  process.on('SIGINT', () => {
-    console.log(chalk.yellow('\n[TelegramDaemon] Shutting down...'));
-    bot.stopPolling();
-    process.exit(0);
+  return new Promise(() => {
+    process.on('SIGINT', async () => {
+      console.log(chalk.yellow('\n[TelegramDaemon] Shutting down... Waiting for pending tasks to finish.'));
+      bot.stopPolling();
+      await queue.waitUntilDrained();
+      console.log(chalk.green('[TelegramDaemon] All tasks finished. Exiting.'));
+      process.exit(0);
+    });
   });
 }

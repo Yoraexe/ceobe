@@ -151,7 +151,9 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
           if (res.trim()) { task = res; fs.writeFileSync(taskPath, task); }
         }
         
-        await markPhaseComplete('design', 'audit'); // Mark phase complete after successful planning
+        if (retryCount === 0) {
+          await markPhaseComplete('design', 'audit'); // Mark phase complete after successful initial planning
+        }
 
         // Hash Validation & Convergence Guard
         const currentDocs = { brd, design, arch, devops, task };

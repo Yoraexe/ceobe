@@ -101,8 +101,6 @@ export async function executeToolCalls(
         state.commandHealCount++;
         await markSelfHeal();
         logExecution(`SELF_HEAL_CMD[${state.commandHealCount}]: Command failure detected in tool '${block.name}'.`);
-      } else {
-        state.commandHealCount = 0;
       }
     }
 
@@ -122,7 +120,7 @@ export async function executeToolCalls(
       tool_use_id: block.id,
       name: block.name,
       content: resultBlocks,
-    } as any);
+    } as NormalizedContentBlock);
   }
 
   return { toolResultBlocks, hasCommandFailure, userAborted };

@@ -1,5 +1,15 @@
 import type { NormalizedMessage, NormalizedContentBlock } from '../providers/types';
 
+function splitAtNewline(text: string, index: number, direction: 'forward' | 'backward'): number {
+  if (direction === 'forward') {
+    const nl = text.indexOf('\n', index);
+    return nl === -1 ? index : nl;
+  } else {
+    const nl = text.lastIndexOf('\n', index);
+    return nl === -1 ? index : nl;
+  }
+}
+
 /**
  * Safely trims the message history to avoid exceeding context window limits,
  * while ensuring tool_use / tool_result pairs are never orphaned.
@@ -12,11 +22,10 @@ export function trimMessages(
 
   const firstMessage = messages[0];
   const targetTailLength = maxMessages - 1;
+  const startIndex = messages.length - targetTailLength;
 
-  let trimmableMessages = [...messages.slice(1)];
-  while (trimmableMessages.length > targetTailLength) {
-    trimmableMessages.shift();
-  }
+  let trimmableMessages = messages.slice(startIndex);
+  let currentIndex = startIndex;
 
   let expansions = 0;
   // Ensure we didn't orphan a tool_result by leaving it at the front
@@ -26,10 +35,9 @@ export function trimMessages(
     if (first.role === 'user' && Array.isArray(first.content)) {
       const hasToolResult = first.content.some((c: any) => c.type === 'tool_result');
       if (hasToolResult) {
-        // Expand the window backwards to include the corresponding tool_use
-        const originalIndex = messages.length - trimmableMessages.length - 1;
-        if (originalIndex > 0 && messages[originalIndex] !== trimmableMessages[0]) {
-          trimmableMessages.unshift(messages[originalIndex]);
+        if (currentIndex > 1) {
+          currentIndex--;
+          trimmableMessages.unshift(messages[currentIndex]);
           expansions++;
           continue;
         }
@@ -59,8 +67,10 @@ If you need architectural or design context, use read_file to read .ceobe/archit
 export function truncateModelResponse(content: NormalizedContentBlock[], limit: number = 4000): NormalizedContentBlock[] {
   return content.map(c => {
     if (c.type === 'text' && 'text' in c && typeof c.text === 'string' && c.text.length > limit) {
-       const head = c.text.substring(0, limit / 2);
-       const tail = c.text.substring(c.text.length - limit / 2);
+       const headIdx = splitAtNewline(c.text, Math.floor(limit / 2), 'backward');
+       const tailIdx = splitAtNewline(c.text, c.text.length - Math.floor(limit / 2), 'forward');
+       const head = c.text.substring(0, headIdx);
+       const tail = c.text.substring(tailIdx);
        return { ...c, text: head + '\n\n...[Reasoning Truncated]...\n\n' + tail };
     }
     return c;
@@ -86,12 +96,16 @@ export function truncateToolResult(resultPayload: unknown, limit: number = 8000)
     if (Array.isArray(resultPayload)) {
       return resultPayload.map((b: NormalizedContentBlock) => {
          if (b.type === 'text' && typeof b.text === 'string' && b.text.length > limit) {
-           return { ...b, text: b.text.substring(0, limit / 2) + "\n\n...[TRUNCATED BY CEOBE]...\n\n" + b.text.substring(b.text.length - limit / 2) };
+           const headIdx = splitAtNewline(b.text, Math.floor(limit / 2), 'backward');
+           const tailIdx = splitAtNewline(b.text, b.text.length - Math.floor(limit / 2), 'forward');
+           return { ...b, text: b.text.substring(0, headIdx) + "\n\n...[TRUNCATED BY CEOBE]...\n\n" + b.text.substring(tailIdx) };
          }
          return b;
       });
     } else {
-      return resultStr.substring(0, limit / 2) + "\n\n...[TRUNCATED BY CEOBE]...\n\n" + resultStr.substring(resultStr.length - limit / 2);
+      const headIdx = splitAtNewline(resultStr, Math.floor(limit / 2), 'backward');
+      const tailIdx = splitAtNewline(resultStr, resultStr.length - Math.floor(limit / 2), 'forward');
+      return resultStr.substring(0, headIdx) + "\n\n...[TRUNCATED BY CEOBE]...\n\n" + resultStr.substring(tailIdx);
     }
   }
 

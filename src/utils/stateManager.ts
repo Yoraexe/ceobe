@@ -5,7 +5,7 @@
 // Side Effects: Read/write file system (.ceobe-state.json dan .lock)
 // v1.7.0: Tambahan field selfHealCount untuk melacak siklus self-healing.
 
-import { getProjectDir, log } from './context';
+import { getProjectDir, log, executionContext } from './context';
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
@@ -22,23 +22,32 @@ export interface CeobeState {
   lastSnapshotHash?: string;
 }
 
-let cachedState: CeobeState | null = null;
+let globalCachedState: CeobeState | null = null;
 
 export function getStateFilePath(): string {
   return path.join(getProjectDir(), '.ceobe', 'ceobe-state.json');
 }
 
 export function clearStateCache(): void {
-  cachedState = null;
+  const ctx = executionContext.getStore();
+  if (ctx) {
+    ctx.stateCache = undefined;
+  } else {
+    globalCachedState = null;
+  }
 }
 
 export async function readState(): Promise<CeobeState | null> {
-  if (cachedState) return cachedState;
+  const ctx = executionContext.getStore();
+  const cached = ctx ? ctx.stateCache : globalCachedState;
+  if (cached) return cached;
   
   try {
     const data = await fs.promises.readFile(getStateFilePath(), 'utf8');
-    cachedState = JSON.parse(data);
-    return cachedState;
+    const parsed = JSON.parse(data);
+    if (ctx) ctx.stateCache = parsed;
+    else globalCachedState = parsed;
+    return parsed;
   } catch (err: any) {
     if (err.code !== 'ENOENT') {
       log(chalk.yellow(`Failed to read .ceobe/ceobe-state.json: ${err.message}`));
@@ -47,7 +56,7 @@ export async function readState(): Promise<CeobeState | null> {
   }
 }
 
-export async function writeState(state: Partial<CeobeState>): Promise<void> {
+export async function writeState(state: Partial<CeobeState> | ((currentState: CeobeState) => Partial<CeobeState>)): Promise<void> {
   const statePath = getStateFilePath();
   const dir = path.dirname(statePath);
   
@@ -85,9 +94,11 @@ export async function writeState(state: Partial<CeobeState>): Promise<void> {
       currentState = { currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() };
     }
     
+    const partialState = typeof state === 'function' ? state(currentState) : state;
+    
     const newState: CeobeState = {
       ...currentState,
-      ...state,
+      ...partialState,
       lastUpdated: new Date().toISOString()
     };
     
@@ -96,7 +107,9 @@ export async function writeState(state: Partial<CeobeState>): Promise<void> {
     await fs.promises.writeFile(tempPath, JSON.stringify(newState, null, 2), 'utf8');
     await fs.promises.rename(tempPath, statePath);
 
-    cachedState = newState;
+    const ctx = executionContext.getStore();
+    if (ctx) ctx.stateCache = newState;
+    else globalCachedState = newState;
   } finally {
     await release();
   }
@@ -104,13 +117,13 @@ export async function writeState(state: Partial<CeobeState>): Promise<void> {
 
 export async function markPhaseComplete(phaseName: string, nextPhase: CeobeState['currentPhase']): Promise<void> {
   clearStateCache();
-  const currentState = await readState();
-  const completed = currentState ? new Set(currentState.completedPhases) : new Set<string>();
-  completed.add(phaseName);
-  
-  await writeState({
-    currentPhase: nextPhase,
-    completedPhases: Array.from(completed)
+  await writeState((currentState) => {
+    const completed = new Set(currentState.completedPhases);
+    completed.add(phaseName);
+    return {
+      currentPhase: nextPhase,
+      completedPhases: Array.from(completed)
+    };
   });
 }
 
@@ -125,15 +138,10 @@ export async function markFileComplete(filePath: string): Promise<void> {
 
   try {
     clearStateCache();
-    const currentState = await readState();
-    const files = currentState ? new Set(currentState.completedFiles || []) : new Set<string>();
-    
-    if (files.has(filePath)) return; // Skip disk write if already complete
-    
-    files.add(filePath);
-    
-    await writeState({
-      completedFiles: Array.from(files)
+    await writeState((currentState) => {
+      const files = new Set(currentState.completedFiles || []);
+      files.add(filePath);
+      return { completedFiles: Array.from(files) };
     });
   } finally {
     if (fileLock.get(normPath) === next) fileLock.delete(normPath);
@@ -151,9 +159,11 @@ export async function getCompletedFiles(): Promise<string[]> {
  * Called by executor.ts on every autonomous bug-fix cycle.
  */
 export async function markSelfHeal(): Promise<number> {
-  const currentState = await readState();
-  const newCount = (currentState?.selfHealCount ?? 0) + 1;
-  await writeState({ selfHealCount: newCount });
+  let newCount = 0;
+  await writeState((currentState) => {
+    newCount = (currentState.selfHealCount ?? 0) + 1;
+    return { selfHealCount: newCount };
+  });
   return newCount;
 }
 

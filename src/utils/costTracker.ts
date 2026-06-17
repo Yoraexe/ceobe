@@ -44,6 +44,17 @@ const PRICING: Record<string, { input: number; output: number }> = {
   'qwen-3-max': { input: 0.30, output: 0.90 }
 };
 
+export function getPricing(): Record<string, { input: number; output: number }> {
+  if (process.env.CEOBE_PRICING_OVERRIDE) {
+    try {
+      return { ...PRICING, ...JSON.parse(process.env.CEOBE_PRICING_OVERRIDE) };
+    } catch {
+      // Ignore invalid JSON in override
+    }
+  }
+  return PRICING;
+}
+
 let globalSessionUsage: TokenUsage[] = [];
 
 function getSessionUsageArray(): TokenUsage[] {
@@ -71,10 +82,11 @@ export function getSessionCost(): number {
   const sessionUsage = getSessionUsageArray();
   for (const usage of sessionUsage) {
     // Find closest matching pricing tier based on model name substring, sorting by length desc to match specific models first (e.g. gpt-4o-mini vs gpt-4o)
-    const modelKey = Object.keys(PRICING)
+    const pricingMap = getPricing();
+    const modelKey = Object.keys(pricingMap)
       .sort((a, b) => b.length - a.length)
       .find(k => usage.model.toLowerCase().includes(k));
-    const rates = modelKey ? PRICING[modelKey] : { input: 0, output: 0 };
+    const rates = modelKey ? pricingMap[modelKey] : { input: 0, output: 0 };
     
     const inputCost = (usage.inputTokens / 1_000_000) * rates.input;
     const outputCost = (usage.outputTokens / 1_000_000) * rates.output;
@@ -97,8 +109,9 @@ export function getCostSummary(): string {
   const totalInput = sessionUsage.reduce((sum, u) => sum + u.inputTokens, 0);
   const totalOutput = sessionUsage.reduce((sum, u) => sum + u.outputTokens, 0);
   
+  const pricingMap = getPricing();
   const hasUnknownModel = sessionUsage.some(usage => {
-    return !Object.keys(PRICING).some(k => usage.model.toLowerCase().includes(k));
+    return !Object.keys(pricingMap).some(k => usage.model.toLowerCase().includes(k));
   });
 
   const costStr = hasUnknownModel ? `$${totalCost.toFixed(4)}+` : `$${totalCost.toFixed(4)}`;

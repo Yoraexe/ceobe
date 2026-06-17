@@ -98,26 +98,36 @@ function getConfigPath(): string {
 // Read / Write
 // ─────────────────────────────────────────────
 
-let cachedConfig: CeobeConfig | null = null;
+let globalCachedConfig: CeobeConfig | null = null;
 
 export function clearConfigCacheForTesting(): void {
-  cachedConfig = null;
+  const ctx = executionContext.getStore();
+  if (ctx) ctx.configCache = undefined;
+  else globalCachedConfig = null;
 }
 
 export function readConfig(): CeobeConfig {
-  if (cachedConfig) return cachedConfig;
+  const ctx = executionContext.getStore();
+  const cached = ctx ? ctx.configCache : globalCachedConfig;
+  if (cached) return cached;
+  
   const configPath = getConfigPath();
+  let loadedConfig: CeobeConfig;
+  
   if (!fs.existsSync(configPath)) {
-    cachedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
-    return cachedConfig;
+    loadedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
+  } else {
+    try {
+      loadedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
+    } catch {
+      loadedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
+    }
   }
-  try {
-    cachedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
-    return cachedConfig;
-  } catch {
-    cachedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
-    return cachedConfig;
-  }
+  
+  if (ctx) ctx.configCache = loadedConfig;
+  else globalCachedConfig = loadedConfig;
+  
+  return loadedConfig;
 }
 
 export function writeConfig(config: CeobeConfig): void {
@@ -129,7 +139,9 @@ export function writeConfig(config: CeobeConfig): void {
   fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
   fs.renameSync(tmpPath, configPath);
   
-  cachedConfig = config;
+  const ctx = executionContext.getStore();
+  if (ctx) ctx.configCache = config;
+  else globalCachedConfig = config;
 }
 
 export function getActiveMode(): CeobeMode {

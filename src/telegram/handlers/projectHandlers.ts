@@ -41,7 +41,12 @@ export async function handleAddProjectCommand(bot: TelegramBot, chatId: number, 
     const name = args[0];
     const targetPath = args.slice(1).join(' ');
     const absolutePath = path.resolve(targetPath);
-    const isSystemDir = absolutePath === '/' || /^[a-zA-Z]:\\\\?$/.test(absolutePath) || absolutePath.toLowerCase().includes('windows\\system32') || absolutePath.toLowerCase().includes('/etc');
+    const isSystemDir = 
+      absolutePath === '/' || 
+      /^[a-zA-Z]:[\\/]*$/.test(absolutePath) || 
+      /windows/i.test(absolutePath) || 
+      /program files/i.test(absolutePath) || 
+      /^\/(etc|var|root|usr|bin|sbin|sys|proc|dev)(\/|$)/.test(absolutePath);
     
     if (isSystemDir) {
       await bot.sendMessage(chatId, `🚫 Path *${absolutePath}* ditolak karena merupakan direktori sistem.`, { parse_mode: 'Markdown' });

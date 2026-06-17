@@ -51,6 +51,7 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
   }
 
   const tools: NormalizedTool[] = [];
+  const { confirmToolCall, getActiveMode } = await import('../../utils/modeManager');
 
   for (const file of pluginFiles) {
     try {
@@ -65,8 +66,6 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
 
       const fileUrl = pathToFileURL(realPath).href;
       
-      const { confirmToolCall } = await import('../../utils/modeManager');
-      const { getActiveMode } = await import('../../utils/modeManager');
       if (getActiveMode() === 'ask') {
          log(chalk.yellow(`[PluginLoader] ⚠️ Keamanan: Meminta izin untuk memuat plugin eksternal '${file}'...`));
          const approved = await confirmToolCall('load_plugin', { file, path: realPath });

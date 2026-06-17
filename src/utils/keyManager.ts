@@ -17,11 +17,21 @@ export function readAllKeys(): Record<string, string> {
   }
 }
 
+import { execSync } from 'child_process';
+
 export function writeAllKeys(keys: Record<string, string>): void {
   const filePath = getKeysStorePath();
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(keys, null, 2), { encoding: 'utf8', mode: 0o600 });
+  
+  if (os.platform() === 'win32') {
+    try {
+      execSync(`icacls "${filePath}" /inheritance:r /grant:r "%USERNAME%:F"`, { stdio: 'ignore' });
+    } catch {
+      // Silently ignore if icacls fails
+    }
+  }
 }
 
 export function getKey(name: string): string {

@@ -32,7 +32,7 @@ function hasDependencyKeyword(text: string): boolean {
     'after completing', 'after the', 'when the task', 'dependent on',
     'setelah task', 'setelah selesai', 'membutuhkan', 'bergantung pada', 'integrasi dengan',
   ];
-  return DEPENDENCY_SIGNALS.some(sig => new RegExp(`\\b${sig}\\b`, 'i').test(text));
+  return DEPENDENCY_SIGNALS.some(sig => new RegExp(`(?:^|\\s)${sig.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\$&')}(?=\\s|$)`, 'i').test(text));
 }
 
 /**
@@ -45,7 +45,7 @@ function isAlwaysParallel(text: string): boolean {
     'write unit test', 'add unit test', 'unit tests', 'write test', 'add test',
     'dokumentasi', 'dokumen', 'tulis test',
   ];
-  return INDEPENDENT_SIGNALS.some(sig => new RegExp(`\\b${sig.replace(/\\./g, '\\.')}\\b`, 'i').test(text));
+  return INDEPENDENT_SIGNALS.some(sig => new RegExp(`(?:^|\\s)${sig.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\$&')}(?=\\s|$)`, 'i').test(text));
 }
 
 /**

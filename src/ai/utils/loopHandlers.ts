@@ -51,6 +51,12 @@ export async function cleanupBackgroundProcesses(): Promise<void> {
 }
 
 export async function runPolyglotVerification(projectDir: string): Promise<void> {
+  // Prevent running tests recursively if Ceobe is run on itself
+  if (path.resolve(projectDir) === path.resolve(__dirname, '../../..')) {
+    log(chalk.yellow(`\n[Supervisor] Verification skipped because target project is Ceobe itself.`));
+    return;
+  }
+
   // Check TypeScript compilation
   const hasTsconfig = fs.existsSync(path.join(projectDir, 'tsconfig.json'));
   if (hasTsconfig) {
