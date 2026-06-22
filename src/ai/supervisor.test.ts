@@ -23,7 +23,8 @@ vi.mock('../utils/costTracker', () => ({
 }));
 vi.mock('../utils/gitManager', () => ({
   createSnapshot: vi.fn(),
-  rollbackToSnapshot: vi.fn()
+  rollbackToSnapshot: vi.fn(),
+  getChangedFiles: vi.fn().mockResolvedValue([])
 }));
 vi.mock('./taskParser', () => ({
   parseTaskWaves: vi.fn().mockImplementation((finalTask: string) => [{ wave: 1, tasks: [{ title: 'task', content: finalTask }] }])

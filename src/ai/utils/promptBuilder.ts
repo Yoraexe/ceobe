@@ -16,12 +16,42 @@ Example: "cost-reducer, scalability, frontend-design"
 NO markdown, NO greetings, NO extra text.`;
 }
 
+import * as fs from 'fs';
+import * as path from 'path';
+import { getProjectDir } from '../../utils/context';
+
+function extractADRSection(): string {
+  try {
+    const archPath = path.join(getProjectDir(), '.ceobe', 'architecture.md');
+    if (!fs.existsSync(archPath)) return '';
+    const content = fs.readFileSync(archPath, 'utf8');
+    const adrMatch = content.match(/## 8\. Key Design Decisions \(ADR\)([\s\S]*)/);
+    return adrMatch ? adrMatch[1].trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 function assembleBaseContext(rules: string, skillsContext: string, auditorFeedback?: string): string {
   let ctx = '';
   if (rules) ctx += `Adhere to these rules:\n${rules}\n`;
   if (skillsContext) ctx += `\n${skillsContext}\n`;
+  
+  const adrs = extractADRSection();
+  if (adrs) ctx += `\nARCHITECTURE DECISIONS (DO NOT CONTRADICT):\n${adrs}\n`;
+  
   if (auditorFeedback) ctx += `\nIMPORTANT FEEDBACK FROM AUDITOR:\n${auditorFeedback}\n`;
   return ctx;
+}
+
+function getCriticalConstraintEcho(): string {
+  return `\n--- CRITICAL REMINDERS (RE-READ) ---
+1. NEVER hallucinate imports — verify package.json first (Rule #13)
+2. ALWAYS respect existing project patterns — Adaptive Legacy Fallback (Rule #1)
+3. ALWAYS add file header documentation (Rule #14)
+4. NEVER put business logic in controllers (Rule #3)
+5. VERIFY file existence before editing (Rule #13)
+--- END REMINDERS ---`;
 }
 
 export function buildBRDPrompt(taskDescription: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
@@ -46,7 +76,9 @@ Your Job:
 Output ONLY the markdown Business Requirements Document (BRD).
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
-${readTemplate('brd-template.md')}`;
+${readTemplate('brd-template.md')}
+
+${getCriticalConstraintEcho()}`;
 }
 
 export function buildDesignPrompt(brdContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
@@ -65,7 +97,9 @@ ${brdContent}
 Output ONLY the markdown Design Specification based on the BRD. Outline the color palette, typography, core components, and screen layouts. Do not write full code.
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
-${readTemplate('design-template.md')}`;
+${readTemplate('design-template.md')}
+
+${getCriticalConstraintEcho()}`;
 }
 
 export function buildArchitecturePrompt(brdContent: string, designContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
@@ -87,7 +121,9 @@ ${designContent}
 Output ONLY the markdown Architecture Document. Outline the tech stack, data schemas, and folder structures. Do not write full code.
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
-${readTemplate('architecture-template.md')}`;
+${readTemplate('architecture-template.md')}
+
+${getCriticalConstraintEcho()}`;
 }
 
 export function buildImplementationPrompt(architectureContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
@@ -112,7 +148,9 @@ Example Output:
   "Initialize package.json with necessary dependencies (express, cors, dotenv)",
   "Create src/index.ts setting up the Express server and port listener",
   "Implement src/utils/logger.ts using winston"
-]`;
+]
+
+${getCriticalConstraintEcho()}`;
 }
 
 export function buildDevOpsPrompt(architectureContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
@@ -131,7 +169,9 @@ ${architectureContent}
 Output ONLY the markdown DevOps Configuration (Dockerfile, CI/CD YAML, docker-compose).
 
 YOU MUST FORMAT YOUR OUTPUT EXACTLY ACCORDING TO THIS TEMPLATE:
-${readTemplate('devops-template.md')}`;
+${readTemplate('devops-template.md')}
+
+${getCriticalConstraintEcho()}`;
 }
 
 export function buildAuditPrompt(brdContent: string, designContent: string, archContent: string, executionPlan: string, devopsConfig: string): string {

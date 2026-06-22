@@ -271,6 +271,27 @@ ${feedback}
         try {
           await runPolyglotVerification(getProjectDir());
 
+          // ── Rule Compliance Check ──────────────────────────────────────
+          if (process.env.CEOBE_RULE_CHECKER !== 'off') {
+            const { checkRules } = await import('./tools/ruleChecker');
+            const { getChangedFiles } = await import('../utils/gitManager');
+            const changedFiles = await getChangedFiles();
+            if (changedFiles.length > 0) {
+              const violations = await checkRules(changedFiles);
+              const errors = violations.filter(v => v.severity === 'error');
+              if (errors.length > 0) {
+                const violationReport = errors.map(v =>
+                  `[${v.ruleId}] ${v.filePath}:${v.line ?? '?'} — ${v.message}\nFix: ${v.fix}`
+                ).join('\n');
+                throw { stdout: `Rule Checker Violations:\n${violationReport}`, stderr: '' };  // trigger self-heal
+              }
+              if (violations.length > 0) {
+                log(chalk.yellow(`⚠️ [Rule Checker] ${violations.length} warnings detected (not blocking).`));
+              }
+            }
+          }
+          // ──────────────────────────────────────────────────────────────
+
           isCodeValid = true;
           log(chalk.green(`\n✅ [Supervisor] Code Verification Passed! No compilation or test errors.`));
           await markPhaseComplete('verify', 'devops');

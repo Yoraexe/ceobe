@@ -8,12 +8,12 @@ Ceobe now utilizes a **Three Brain Pattern** to prevent AI hallucinations and el
 2. **QA Auditor (The Reviewer)**: Strictly reviews the Blueprint against the core rules to ensure architectural soundness.
 3. **Executor (The Programmer)**: Follows the validated blueprint to write the code. Best paired with fast/cheap models (e.g., Gemini Exp, GLM, or Llama 3).
 
-## ⚡ Features (v1.13.0 V3 Engine)
-- **🔥 Hash Convergence Guard (V3 New):** Infinite-loop protection! Supervisor tracks document state via SHA-256 hashes and gracefully skips QA audits if no documents were changed, saving thousands of tokens and eliminating loop traps.
-- **🛡️ Token Bleed Protection (V3 New):** Executor now detects `max_tokens` exhaustion and breaks loops safely after 3 retries, preventing run-away token burn.
-- **🎯 Dynamic Tool Injection (V3 New):** The system intelligently parses your task and *only* injects the required LLM skills/tools into the prompt, resulting in massive Input Token reduction.
-- **✨ Prefix Caching Support (V3 New):** Fully typed `NormalizedContentBlock` support enables 100% compatibility with Anthropic's `cache_control: true` feature, dramatically speeding up audits and reducing prompt token costs.
-- **🛠️ Core Stability & Type Safety (v1.13.0 New):** Fixed all audit warnings, eliminated implicit 'any' types, and implemented graceful queue shutdown (`waitUntilDrained`) for Telegram Daemon.
+## ⚡ Features (v1.14.0 Mastery Audit Edition)
+- **🔥 Hybrid Retrieval & Mastery Audit (v1.14.0 New):** Implemented Reciprocal Rank Fusion (RRF), AST Linters (Rule Checker), and U-Curve prompt optimization for rigorous structural enforcement.
+- **🛡️ Token Bleed Protection (V3 Engine):** Executor now detects `max_tokens` exhaustion and breaks loops safely after 3 retries, preventing run-away token burn.
+- **🎯 Dynamic Tool Injection (V3 Engine):** The system intelligently parses your task and *only* injects the required LLM skills/tools into the prompt, resulting in massive Input Token reduction.
+- **✨ Prefix Caching Support (V3 Engine):** Fully typed `NormalizedContentBlock` support enables 100% compatibility with Anthropic's `cache_control: true` feature.
+- **🛠️ Core Stability & Type Safety:** Fixed all audit warnings, eliminated implicit 'any' types, and implemented graceful queue shutdown (`waitUntilDrained`) for Telegram Daemon.
 - **🌐 Polyglot Architecture Check (v1.12.0 New):** Automatically detects and verifies compilations/tests across TypeScript, Go, Rust, PHP/Laravel, and Python after each execution wave.
 - **🛡️ Telegram Interactive HITL (v1.12.0 New):** Safe mode `mode ask` now streams confirmation requests directly to your Telegram with interactive Inline Buttons (Approve/Reject).
 - **🔐 Concurrent File-Lock Safety:** Rock-solid thread safety for multi-agent I/O. File writes are protected with `proper-lockfile` and strict mutex-like write locks, eliminating corruption even when 10 AI subagents write simultaneously!

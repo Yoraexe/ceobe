@@ -32,33 +32,6 @@ export function validatePath(filePath: string): string {
   return normalizedPath;
 }
 
-function recursiveSearch(dir: string, pattern: RegExp, results: string[] = [], depth: number = 0, maxDepth: number = 5): string[] {
-  if (depth > maxDepth) return results;
-  if (!fs.existsSync(dir)) return results;
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    if (file === 'node_modules' || file === '.git' || file === 'dist' || file === 'build') continue; // Ignore typical large dirs
-    const fullPath = path.join(dir, file);
-    const stat = fs.statSync(fullPath);
-    if (stat.isDirectory()) {
-      recursiveSearch(fullPath, pattern, results, depth + 1, maxDepth);
-    } else if (stat.isFile()) {
-      if (stat.size > 1000000) continue; // Skip files > 1MB
-      try {
-        const content = fs.readFileSync(fullPath, 'utf8');
-        const lines = content.split('\n');
-        lines.forEach((line, index) => {
-          if (pattern.test(line)) {
-            results.push(`${fullPath}:${index + 1}:${line.trim()}`);
-          }
-        });
-      } catch (e) {
-        // Skip files that can't be read as utf8 (e.g., binaries)
-      }
-    }
-  }
-  return results;
-}
 
 export async function handleReadFile(input: Record<string, any>): Promise<string> {
   const fullPath = validatePath(input.file_path);
@@ -230,21 +203,6 @@ export async function handleListDirectory(input: Record<string, any>): Promise<s
   return files.join('\n');
 }
 
-export async function handleSearchInFiles(input: Record<string, any>): Promise<string> {
-  const fullPath = validatePath(input.dir_path);
-  try {
-    const escapedQuery = input.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(escapedQuery, 'i');
-    const results = recursiveSearch(fullPath, pattern);
-    if (results.length === 0) return 'No matches found.';
-    if (results.length > 100) {
-       return results.slice(0, 100).join('\n') + `\n... and ${results.length - 100} more matches.`;
-    }
-    return results.join('\n');
-  } catch (e: unknown) {
-    return `Error during search: ${e instanceof Error ? e.message : String(e)}`;
-  }
-}
 
 export async function handleDeleteFile(input: Record<string, any>): Promise<string> {
   const fullPath = validatePath(input.file_path);

@@ -15,6 +15,8 @@ import { getProjectDir } from '../../utils/context';
 import chalk from 'chalk';
 import ora from 'ora';
 import { extractTypeScriptSignatures, isTypeScriptFile, AST_COMPRESSION_THRESHOLD } from './astParser';
+import { loadFullTextIndex, saveFullTextIndex, indexFileContent, removeFileFromIndex } from './fullTextSearch';
+import { buildDependencyGraph, saveDependencyGraph } from './dependencyGraph';
 
 const IGNORED_DIRS = ['node_modules', '.git', 'dist', 'build', 'coverage', '.ceobe'];
 const IGNORED_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.mp4', '.pdf', '.zip', '.tar', '.gz'];
@@ -90,6 +92,9 @@ export async function indexWorkspace(): Promise<void> {
     const cache = loadCache();
     const existingEmbeddings = loadEmbeddings();
     
+    const useHybridIndex = process.env.CEOBE_HYBRID_INDEX !== 'off';
+    const fullTextIndex = useHybridIndex ? loadFullTextIndex() : {};
+    
     const filesToProcess: string[] = [];
     const newCache: FileCache = {};
     const finalChunks: CodeChunk[] = [];
@@ -104,6 +109,9 @@ export async function indexWorkspace(): Promise<void> {
       
       if (!cache[relPath] || cache[relPath] !== mtime) {
         filesToProcess.push(file);
+        if (useHybridIndex) {
+          removeFileFromIndex(relPath, fullTextIndex);
+        }
       } else {
         // Keep existing embeddings for this file
         const fileChunks = existingEmbeddings.filter(c => c.filePath === relPath);
@@ -116,6 +124,19 @@ export async function indexWorkspace(): Promise<void> {
       // Still save cache in case files were deleted
       saveCache(newCache);
       saveEmbeddings(finalChunks); // Clean up embeddings of deleted files
+      if (useHybridIndex) {
+        for (const relPath of Object.keys(cache)) {
+          if (!newCache[relPath]) {
+            removeFileFromIndex(relPath, fullTextIndex);
+          }
+        }
+        saveFullTextIndex(fullTextIndex);
+        
+        spinner.text = 'Updating dependency graph...';
+        const graph = buildDependencyGraph(workspaceRoot, files);
+        saveDependencyGraph(graph);
+        spinner.succeed(chalk.green('Hybrid index up to date.'));
+      }
       return;
     }
     
@@ -130,6 +151,10 @@ export async function indexWorkspace(): Promise<void> {
         const rawContent = fs.readFileSync(file, 'utf8');
         const lines = rawContent.split('\n');
         const relPath = path.relative(workspaceRoot, file);
+
+        if (useHybridIndex) {
+          indexFileContent(relPath, rawContent, fullTextIndex);
+        }
 
         // ── AST Context Compression ─────────────────────────────────────────────────
         // Large TypeScript files are compressed to signature-only representation
@@ -199,6 +224,20 @@ export async function indexWorkspace(): Promise<void> {
     
     saveEmbeddings(finalChunks);
     saveCache(newCache);
+    
+    if (useHybridIndex) {
+      for (const relPath of Object.keys(cache)) {
+        if (!newCache[relPath]) {
+          removeFileFromIndex(relPath, fullTextIndex);
+        }
+      }
+      saveFullTextIndex(fullTextIndex);
+      
+      spinner.text = 'Building dependency graph...';
+      const graph = buildDependencyGraph(workspaceRoot, files);
+      saveDependencyGraph(graph);
+    }
+    
     spinner.succeed(chalk.green(`Successfully indexed ${chunks.length} new/modified chunks. Total chunks in memory: ${finalChunks.length}.`));
     
   } catch (error: unknown) {

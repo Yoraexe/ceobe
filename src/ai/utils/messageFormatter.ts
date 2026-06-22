@@ -58,7 +58,13 @@ Your task is to take the provided execution plan and strictly implement it.
 You have access to tool commands to read/write files and run terminal commands.
 DO NOT provide planning commentary. DO NOT hallucinate dependencies. Write code.
 When you are completely finished with the task, you MUST call the finish_task tool.
-If you need architectural or design context, use read_file to read .ceobe/architecture.md or .ceobe/design.md.`;
+If you need architectural or design context, use read_file to read .ceobe/architecture.md or .ceobe/design.md.
+
+RETRIEVAL PROTOCOL (MANDATORY):
+1. Sebelum menulis kode, panggil \`search_codebase\` untuk memahami existing codebase.
+2. Jika hasil kurang relevan, ULANGI dengan query berbeda (max 3 attempts).
+3. Untuk exact match (nama function, import path), gunakan \`grep_codebase\`.
+4. Jangan mulai coding sampai kamu punya cukup context tentang file yang akan terpengaruh.`;
 }
 
 /**

@@ -6,15 +6,14 @@
 import { handlePluginCall } from '../plugins/pluginLoader';
 import { 
   handleReadFile, handleWriteFile, handleEditFile, handleRenameFile, 
-  handleMoveFile, handleCreateDirectory, handleListDirectory, 
-  handleSearchInFiles, handleDeleteFile 
+  handleMoveFile, handleCreateDirectory, handleListDirectory, handleDeleteFile 
 } from './handlers/fileOps';
 import { 
   handleExecuteCommand, handleStartBackgroundService, handleStopBackgroundService,
   activeBackgroundProcesses 
 } from './handlers/shellOps';
 import { handleVisualAudit } from './handlers/webOps';
-import { handleSemanticSearch } from './handlers/semanticOps';
+import { handleSearchCodebase, handleGrepCodebase } from './handlers/semanticOps';
 
 // Export for backward compatibility (e.g. tests checking active processes)
 export { activeBackgroundProcesses };
@@ -144,18 +143,6 @@ export const tools = [
     }
   },
   {
-    name: 'search_in_files',
-    description: 'Searches for a string pattern in files within a directory using grep/find.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'The pattern to search for' },
-        dir_path: { type: 'string', description: 'The directory to search in (e.g. ./src)' }
-      },
-      required: ['query', 'dir_path']
-    }
-  },
-  {
     name: 'delete_file',
     description: 'Deletes a file from the file system.',
     input_schema: {
@@ -167,12 +154,25 @@ export const tools = [
     }
   },
   {
-    name: 'semantic_search',
-    description: 'Searches the codebase semantically based on meaning, not just exact keywords. Use this to find logic, features, or architecture patterns in the workspace memory.',
+    name: 'search_codebase',
+    description: 'Searches the codebase semantically and via full-text keyword matching using Reciprocal Rank Fusion (RRF). This is the RECOMMENDED tool for finding files, logic, or architecture patterns.',
     input_schema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'The natural language question or concept to search for.' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'grep_codebase',
+    description: 'Searches for an exact keyword or regex pattern across all files in the workspace (ignores binary/node_modules). Best for finding exact variable names or import paths.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The exact string or regex pattern to search for.' },
+        isRegex: { type: 'boolean', description: 'True if the query should be evaluated as a regular expression.' },
+        includes: { type: 'array', items: { type: 'string' }, description: 'Optional list of file extensions to include (e.g. ["*.ts", "*.json"]).' }
       },
       required: ['query']
     }
@@ -219,9 +219,9 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
       case 'move_file': return await handleMoveFile(input);
       case 'create_directory': return await handleCreateDirectory(input);
       case 'list_directory': return await handleListDirectory(input);
-      case 'search_in_files': return await handleSearchInFiles(input);
       case 'delete_file': return await handleDeleteFile(input);
-      case 'semantic_search': return await handleSemanticSearch(input);
+      case 'search_codebase': return await handleSearchCodebase(input);
+      case 'grep_codebase': return await handleGrepCodebase(input);
       case 'visual_audit': return await handleVisualAudit(input);
       
       // finish_task is usually handled directly by the supervisor loop

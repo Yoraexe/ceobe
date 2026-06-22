@@ -59,5 +59,14 @@ Detailkan peran setiap modul agar tidak terjadi *overlapping* tanggung jawab (SR
 ---
 
 ## 8. Key Design Decisions (ADR)
-Dokumentasikan keputusan besar di sini agar tim tidak mempertanyakan ulang di masa depan.
-* **Decision 1:** "Kenapa pakai PostgreSQL dibanding NoSQL?" -> [Alasannya].
+Setiap keputusan arsitektural signifikan WAJIB direkam dalam format berikut:
+
+### ADR-001: [Judul Keputusan]
+- **Status:** Accepted | Superseded | Deprecated
+- **Context:** Mengapa keputusan ini perlu diambil? Apa masalah yang dihadapi?
+- **Decision:** Apa yang diputuskan?
+- **Consequences:** Trade-off apa yang diterima?
+- **Enforcement:** Bagaimana keputusan ini diverifikasi? (linting rule, test, CI check)
+
+### ADR-002: [Judul Keputusan]
+...

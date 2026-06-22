@@ -46,6 +46,22 @@ async function hasChanges(dir: string): Promise<boolean> {
 }
 
 /**
+ * Returns a list of changed/untracked files.
+ */
+export async function getChangedFiles(): Promise<string[]> {
+  const dir = cwd();
+  try {
+    const { stdout } = await execAsync('git status --porcelain', { cwd: dir });
+    const lines = stdout.split('\n').filter(l => l.trim().length > 0);
+    // line format: " M path/to/file" or "?? path/to/file"
+    const files = lines.map(l => l.substring(3).trim());
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Creates a Git snapshot commit before AI execution.
  * Returns the commit hash of the snapshot, or null if the repo is clean / not a git repo.
  */

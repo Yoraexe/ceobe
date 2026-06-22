@@ -13,7 +13,7 @@ import * as path from 'path';
 import packageJson from '../../package.json';
 
 export const APP_NAME = 'Ceobe Mastery CLI';
-export const VERSION = packageJson.version || '1.13.0';
+export const VERSION = packageJson.version || '1.14.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner
@@ -47,7 +47,7 @@ export function printBanner(): void {
   console.log('');
   console.log(
     chalk.gray('  Autonomous AI Engineering Orchestrator') +
-    chalk.dim(` · v${VERSION} [V3 Engine]`)
+    chalk.dim(` · v${VERSION} [Mastery Audit Edition]`)
   );
   console.log(
     chalk.dim(`  🧠 Planner: ${plannerDisplay}`) +
