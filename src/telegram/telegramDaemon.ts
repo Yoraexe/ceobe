@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import { readAllKeys } from '../utils/keyManager';
 import { runAutonomousLoop } from '../ai/supervisor';
 import { MessageQueue } from './messageQueue';
-import { getActiveMode, setConfirmationBridge, clearConfirmationBridge } from '../utils/modeManager';
+import { getActiveMode, setConfirmationBridge, clearConfirmationBridge, getWorktreeMode } from '../utils/modeManager';
 import { TelegramHITLBridge } from './hitlBridge';
 import { getActiveSession, switchSession, sessionStore } from './sessionManager';
 import { readProjects } from '../utils/projectRegistry';
@@ -31,7 +31,9 @@ import {
   handleAddProjectCommand,
   handleResetCommand,
   handleIndexCommand,
-  handleDoctorCommand
+  handleDoctorCommand,
+  handleReflectCommand,
+  handleWorktreeCommand
 } from './handlers';
 
 function getAllowedIds(raw: string): Set<number> {
@@ -121,6 +123,8 @@ export async function startTelegramDaemon(): Promise<void> {
       else if (text === '/reset') await handleResetCommand(bot, chatId);
       else if (text === '/index') await handleIndexCommand(bot, chatId);
       else if (text === '/doctor') await handleDoctorCommand(bot, chatId);
+      else if (text.startsWith('/reflect')) await handleReflectCommand(bot, msg);
+      else if (text.startsWith('/worktree')) await handleWorktreeCommand(bot, chatId, text);
       return;
     }
 
@@ -187,7 +191,7 @@ export async function startTelegramDaemon(): Promise<void> {
             setConfirmationBridge(bridge);
           }
 
-          await runAutonomousLoop(text, getActiveMode() === 'ask', false);
+          await runAutonomousLoop(text, getActiveMode() === 'ask', getWorktreeMode());
           await sendLogs(); 
           await bot.sendMessage(chatId, '🎉 <b>Pipeline selesai!</b> Codebase telah diperbarui oleh Ceobe.', { parse_mode: 'HTML' });
         } catch (err: unknown) {

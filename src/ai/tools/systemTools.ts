@@ -202,40 +202,63 @@ export const tools = [
       },
       required: ['url_or_path']
     }
+  },
+  {
+    name: 'reverse_engineer',
+    description: 'Perform dynamic reverse engineering on a given URL. Extracts frameworks, API endpoints, and basic behavior.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to reverse engineer (e.g. example.com or https://example.com)' },
+        depth: { type: 'string', enum: ['shallow', 'deep'], description: 'shallow = single page. deep = follow internal links (max 5)' },
+        focus: { type: 'array', items: { type: 'string' }, description: 'Focus areas: tech_stack, api_endpoints, ui_patterns, performance, security' }
+      },
+      required: ['url']
+    }
   }
 ];
 
 export async function handleToolCall(toolName: string, rawInput: Record<string, unknown>): Promise<unknown> {
   const input = rawInput as Record<string, any>;
+  let rawResult: unknown;
   try {
     switch (toolName) {
-      case 'read_file': return await handleReadFile(input);
-      case 'write_file': return await handleWriteFile(input);
-      case 'execute_command': return await handleExecuteCommand(input);
-      case 'start_background_service': return await handleStartBackgroundService(input);
-      case 'stop_background_service': return await handleStopBackgroundService(input);
-      case 'edit_file': return await handleEditFile(input);
-      case 'rename_file': return await handleRenameFile(input);
-      case 'move_file': return await handleMoveFile(input);
-      case 'create_directory': return await handleCreateDirectory(input);
-      case 'list_directory': return await handleListDirectory(input);
-      case 'delete_file': return await handleDeleteFile(input);
-      case 'search_codebase': return await handleSearchCodebase(input);
-      case 'grep_codebase': return await handleGrepCodebase(input);
-      case 'visual_audit': return await handleVisualAudit(input);
+      case 'read_file': rawResult = await handleReadFile(input); break;
+      case 'write_file': rawResult = await handleWriteFile(input); break;
+      case 'execute_command': rawResult = await handleExecuteCommand(input); break;
+      case 'start_background_service': rawResult = await handleStartBackgroundService(input); break;
+      case 'stop_background_service': rawResult = await handleStopBackgroundService(input); break;
+      case 'edit_file': rawResult = await handleEditFile(input); break;
+      case 'rename_file': rawResult = await handleRenameFile(input); break;
+      case 'move_file': rawResult = await handleMoveFile(input); break;
+      case 'create_directory': rawResult = await handleCreateDirectory(input); break;
+      case 'list_directory': rawResult = await handleListDirectory(input); break;
+      case 'delete_file': rawResult = await handleDeleteFile(input); break;
+      case 'search_codebase': rawResult = await handleSearchCodebase(input); break;
+      case 'grep_codebase': rawResult = await handleGrepCodebase(input); break;
+      case 'visual_audit': rawResult = await handleVisualAudit(input); break;
+      case 'reverse_engineer': 
+        const { handleReverseEngineer } = await import('./handlers/reverseEngineer');
+        rawResult = await handleReverseEngineer(input); 
+        break;
       
       // finish_task is usually handled directly by the supervisor loop
       // so we don't strictly need a handler here, but it's safe to return empty if called.
-      case 'finish_task': return 'Task marked as finished.';
+      case 'finish_task': rawResult = 'Task marked as finished.'; break;
       
       default:
         try {
-          return await handlePluginCall(toolName, input);
+          rawResult = await handlePluginCall(toolName, input);
         } catch (e: unknown) {
-          return `Error: Tool ${toolName} not recognized or plugin failed: ${e instanceof Error ? e.message : String(e)}`;
+          rawResult = `Error: Tool ${toolName} not recognized or plugin failed: ${e instanceof Error ? e.message : String(e)}`;
         }
+        break;
     }
   } catch (error: unknown) {
-    return `Error executing ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
+    rawResult = `Error executing ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
   }
+  
+  const { validateToolResult } = await import('./toolValidator');
+  const validation = await validateToolResult(toolName, input, rawResult);
+  return validation.enhancedResult;
 }

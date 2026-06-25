@@ -20,6 +20,8 @@ export interface CeobeState {
   selfHealCount?: number;
   /** The last git snapshot created before execution. Used for manual rollbacks. */
   lastSnapshotHash?: string;
+  /** If true, the ponytail lazy ladder rules are disabled. */
+  isCreativeMode?: boolean;
 }
 
 let globalCachedState: CeobeState | null = null;

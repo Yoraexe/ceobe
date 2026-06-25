@@ -10,6 +10,7 @@ import {
 } from '../utils/promptBuilder';
 import { recordUsage } from '../../utils/costTracker';
 import type { NormalizedContentBlock } from '../providers/types';
+import { readState } from '../../utils/stateManager';
 
 function getPlanner() {
   const adapter = createProviderAdapter('planner');
@@ -26,8 +27,10 @@ export async function generateBRD(
   const spinner = ora(`${tag} Generating Business Requirements Document...`).start();
 
   try {
+    const state = await readState();
+    const isCreative = state?.isCreativeMode;
     const stringDesc = typeof taskDescription === 'string' ? taskDescription : '(See attached image/blocks for input)';
-    const basePrompt = buildBRDPrompt(stringDesc, selectedSkills, auditorFeedback);
+    const basePrompt = buildBRDPrompt(stringDesc, selectedSkills, auditorFeedback, isCreative);
 
     const prompt: string | any[] = typeof taskDescription === 'string'
       ? basePrompt
@@ -57,7 +60,9 @@ export async function generateDesignSpec(
   const spinner = ora(`${tag} Designing UI/UX & Design System...`).start();
 
   try {
-    const prompt = buildDesignPrompt(brdContent, selectedSkills, auditorFeedback);
+    const state = await readState();
+    const isCreative = state?.isCreativeMode;
+    const prompt = buildDesignPrompt(brdContent, selectedSkills, auditorFeedback, isCreative);
     const _genResult = await adapter.generate(prompt, 0.3); 
     if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
     const result = _genResult.text;
@@ -80,7 +85,9 @@ export async function generateArchitecture(
   const spinner = ora(`${tag} Designing System Architecture...`).start();
 
   try {
-    const prompt = buildArchitecturePrompt(brdContent, designContent, selectedSkills, auditorFeedback);
+    const state = await readState();
+    const isCreative = state?.isCreativeMode;
+    const prompt = buildArchitecturePrompt(brdContent, designContent, selectedSkills, auditorFeedback, isCreative);
     const _genResult = await adapter.generate(prompt, 0.2); 
     if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
     const result = _genResult.text;
@@ -102,7 +109,9 @@ export async function generateImplementationPlan(
   const spinner = ora(`${tag} Generating Execution Checklist...`).start();
 
   try {
-    const prompt = buildImplementationPrompt(architectureContent, selectedSkills, auditorFeedback);
+    const state = await readState();
+    const isCreative = state?.isCreativeMode;
+    const prompt = buildImplementationPrompt(architectureContent, selectedSkills, auditorFeedback, isCreative);
     const _genResult = await adapter.generate(prompt, 0.2); 
     if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); } 
     const result = _genResult.text;

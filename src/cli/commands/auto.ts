@@ -12,6 +12,8 @@ export function registerAutoCommand(program: Command): void {
     .option('--feature', 'Mode tambah fitur baru ke proyek yang sudah ada')
     .option('--file <path>', 'Gunakan file PRD atau mockup UI sebagai sumber requirement')
     .option('--sandbox', 'Isolasi eksekusi AI dalam Docker container (requires Docker)')
+    .option('--worktree', 'Gunakan git worktree terisolasi untuk eksekusi')
+    .option('--creative', 'Bypass Lazy Mode: Izinkan AI mengeksplorasi arsitektur over-engineered')
     .addHelpText('after', `
   Contoh:
     ceobe auto "Build a REST API with Go and PostgreSQL"
@@ -20,8 +22,10 @@ export function registerAutoCommand(program: Command): void {
     ceobe auto --feature "tambahkan fitur payment gateway"
     ceobe auto --ask "Build a Flutter app"   ← pause sebelum eksekusi
     ceobe auto --sandbox "Build API"          ← eksekusi terisolasi dalam Docker
+    ceobe auto --worktree "Refactor auth"     ← eksekusi di worktree git
+    ceobe auto "Eksplorasi fitur" --creative  ← izinkan AI mengeksplorasi solusi custom
 `)
-    .action(async (description: string | undefined, options: { ask: boolean; feature: boolean; file?: string; sandbox: boolean }) => {
+    .action(async (description: string | undefined, options: { ask: boolean; feature: boolean; file?: string; sandbox: boolean; worktree: boolean; creative: boolean }) => {
       printBanner();
       if (options.sandbox) activateSandbox();
 
@@ -38,6 +42,9 @@ export function registerAutoCommand(program: Command): void {
         process.exit(1);
       }
 
-      await runAutonomousLoop(finalDescription as any, !!options.ask, !!options.feature);
+      const { writeState } = require('../../utils/stateManager');
+      await writeState({ isCreativeMode: !!options.creative });
+
+      await runAutonomousLoop(finalDescription as any, !!options.ask, !!options.feature, !!options.worktree);
     });
 }

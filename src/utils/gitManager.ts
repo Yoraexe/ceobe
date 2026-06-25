@@ -10,6 +10,8 @@
 
 import { exec } from 'child_process';
 import chalk from 'chalk';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getProjectDir, log } from './context';
 
 import { promisify } from 'util';
@@ -128,5 +130,60 @@ export async function rollbackToSnapshot(snapshotHash: string): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     log(chalk.red(`[GitManager] ❌ Rollback gagal: ${msg}`));
     log(chalk.yellow(`  Untuk rollback manual, jalankan: git reset --hard ${snapshotHash}`));
+  }
+}
+
+/**
+ * Creates an isolated Git worktree for parallel or safe execution.
+ * Returns the absolute path of the new worktree.
+ */
+export async function createWorktree(branchName: string): Promise<string> {
+  const dir = cwd();
+  const isRepo = await isGitRepo(dir);
+  if (!isRepo) throw new Error('Not a git repository. Cannot create worktree.');
+
+  const worktreesDir = path.join(dir, '.ceobe', 'worktrees');
+  if (!fs.existsSync(worktreesDir)) {
+    fs.mkdirSync(worktreesDir, { recursive: true });
+  }
+
+  const worktreePath = path.join(worktreesDir, branchName);
+  try {
+    await execAsync(`git worktree add -b ${branchName} "${worktreePath}"`, { cwd: dir });
+    log(chalk.green(`[GitManager] ✅ Worktree created at ${worktreePath}`));
+    return worktreePath;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to create worktree: ${msg}`);
+  }
+}
+
+/**
+ * Removes a git worktree.
+ */
+export async function removeWorktree(worktreePath: string): Promise<void> {
+  const dir = cwd();
+  try {
+    await execAsync(`git worktree remove -f "${worktreePath}"`, { cwd: dir });
+    log(chalk.dim(`[GitManager] Worktree removed: ${worktreePath}`));
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(chalk.yellow(`[GitManager] Failed to remove worktree: ${msg}`));
+  }
+}
+
+/**
+ * Merges a worktree branch into the current branch.
+ */
+export async function mergeWorktree(branchName: string): Promise<void> {
+  const dir = cwd();
+  try {
+    log(chalk.cyan(`[GitManager] Merging branch ${branchName}...`));
+    await execAsync(`git merge ${branchName} --no-edit`, { cwd: dir });
+    log(chalk.green(`[GitManager] ✅ Merge successful.`));
+    await execAsync(`git branch -D ${branchName}`, { cwd: dir });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to merge worktree branch: ${msg}`);
   }
 }

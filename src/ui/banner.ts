@@ -13,7 +13,7 @@ import * as path from 'path';
 import packageJson from '../../package.json';
 
 export const APP_NAME = 'Ceobe Mastery CLI';
-export const VERSION = packageJson.version || '1.14.0';
+export const VERSION = packageJson.version || '1.15.0';
 
 // ─────────────────────────────────────────────────────────────
 // Banner

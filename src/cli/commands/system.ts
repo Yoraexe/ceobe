@@ -11,6 +11,9 @@ import { registerDaemonCommand } from './system/daemonCmd';
 import { registerRollbackCommand } from './system/rollbackCmd';
 import { registerCostCommand } from './system/costCmd';
 import { registerSkillCommand } from './system/skillCmd';
+import { registerReflectCommand } from './system/reflectCmd';
+import { registerReconCommand } from './system/reconCmd';
+import { registerTemplateCommand } from './system/templateCmd';
 
 export function registerSystemCommands(program: Command): void {
   registerIndexCommand(program);
@@ -25,4 +28,7 @@ export function registerSystemCommands(program: Command): void {
   registerRollbackCommand(program);
   registerCostCommand(program);
   registerSkillCommand(program);
+  registerReflectCommand(program);
+  registerReconCommand(program);
+  registerTemplateCommand(program);
 }

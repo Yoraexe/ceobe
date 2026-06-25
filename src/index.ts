@@ -6,6 +6,7 @@ import { registerAutoCommand } from './cli/commands/auto';
 import { registerPlanCommands } from './cli/commands/plan';
 import { registerExecuteCommand } from './cli/commands/execute';
 import { registerSystemCommands } from './cli/commands/system';
+import { registerExportRulesCommand } from './cli/commands/exportRules';
 
 // Module: src/index.ts
 // Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
@@ -28,6 +29,7 @@ registerAutoCommand(program);
 registerPlanCommands(program);
 registerExecuteCommand(program);
 registerSystemCommands(program);
+registerExportRulesCommand(program);
 
 // Help & default (no args)
 program

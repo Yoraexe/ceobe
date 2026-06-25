@@ -15,8 +15,9 @@ import { executeWaves } from './executor';
 import { markPhaseComplete, readState, getCompletedFiles } from '../utils/stateManager';
 import { indexWorkspace } from './memory/indexer';
 import * as crypto from 'crypto';
-import { createSnapshot, rollbackToSnapshot } from '../utils/gitManager';
+import { createSnapshot, rollbackToSnapshot, createWorktree, mergeWorktree, removeWorktree } from '../utils/gitManager';
 import { askUserConfirmation, handleSessionResume, cleanupBackgroundProcesses, runPolyglotVerification } from './utils/loopHandlers';
+import { findMatchingTemplate, applyTemplate, saveTemplate } from './templateManager';
 
 import { resetSession, printCostSummary } from '../utils/costTracker';
 import type { NormalizedContentBlock } from './providers/types';
@@ -62,13 +63,26 @@ export function computeChangedDocs(currentDocs: Record<string, string>, reset: b
 
 const MAX_RETRIES = 3;
 
-export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false): Promise<void> {
-  resetSession();
-  computeChangedDocs({}, true); // C1: Reset hash registry for new session
-  log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
-  
-  const ceobeDir = path.join(getProjectDir(), '.ceobe');
-  if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
+export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false, useWorktree: boolean = false): Promise<void> {
+  const branchName = `ceobe-task-${Date.now()}`;
+  let worktreePath: string | null = null;
+
+  if (useWorktree) {
+    try {
+      worktreePath = await createWorktree(branchName);
+    } catch (e: any) {
+      log(chalk.yellow(`[Supervisor] Gagal membuat worktree: ${e.message}. Fallback ke direktori utama.`));
+      useWorktree = false;
+    }
+  }
+
+  const runCore = async () => {
+    resetSession();
+    computeChangedDocs({}, true); // C1: Reset hash registry for new session
+    log(chalk.magenta.bold(`\n🚀 [Supervisor Agent] Initiating Autonomous Workflow\n`));
+    
+    const ceobeDir = path.join(getProjectDir(), '.ceobe');
+    if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
   const prefix = isFeature ? 'feature-' : '';
   const brdPath = path.join(ceobeDir, `${prefix}brd.md`);
@@ -104,7 +118,26 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
       computeChangedDocs({ brd, design, arch, devops, task });
     }
 
-    if (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit') {
+    let skipPlanning = false;
+    const stringDescription = typeof description === 'string' ? description : description.map(d => d.text).join('\n');
+    
+    if (startingPhase === 'plan' && !isFeature) {
+      const template = findMatchingTemplate(stringDescription);
+      if (template) {
+        if (askBeforeExecute) {
+           const confirmed = await askUserConfirmation(`Template matched (${template.id}). Apply it and skip planning phase?`);
+           if (confirmed) {
+             applyTemplate(template);
+             skipPlanning = true;
+           }
+        } else {
+           applyTemplate(template);
+           skipPlanning = true;
+        }
+      }
+    }
+
+    if (!skipPlanning && (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit')) {
       let regenBRD = startingPhase === 'plan';
       let regenDesign = startingPhase === 'plan' || startingPhase === 'design';
       let regenArch = true;
@@ -220,6 +253,15 @@ ${feedback}
       }
     }
 
+    if (skipPlanning) {
+      if (fs.existsSync(brdPath)) brd = fs.readFileSync(brdPath, 'utf8');
+      if (fs.existsSync(designPath)) design = fs.readFileSync(designPath, 'utf8');
+      if (fs.existsSync(archPath)) arch = fs.readFileSync(archPath, 'utf8');
+      if (fs.existsSync(taskPath)) task = fs.readFileSync(taskPath, 'utf8');
+      if (fs.existsSync(devopsPath)) devops = fs.readFileSync(devopsPath, 'utf8');
+      computeChangedDocs({ brd, design, arch, devops, task });
+    }
+
     // Auto-index before execution
     if (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit' || startingPhase === 'execute') {
        log(chalk.blue(`\n[Supervisor] Indexing workspace for RAG semantic memory...`));
@@ -324,7 +366,7 @@ ${feedback}
     // Phase 5 is now merged into execution, but we mark done
     await markPhaseComplete('devops', 'done');
 
-    // ── Self-Heal Summary Report ───────────────────────────────────────────────
+    // ── Completion & Integrity Report ───────────────────────────────────────
     const finalState = await readState();
     const healCount = finalState?.selfHealCount ?? 0;
     if (healCount > 0) {
@@ -332,13 +374,43 @@ ${feedback}
     }
     // ──────────────────────────────────────────────────────────────────────────
 
-    printCostSummary();
-    log(chalk.green.bold(`\n🎉 [Supervisor Agent] Autonomous Workflow Complete! Mission Accomplished.\n`));
+    // Save success to template if it was a full run and not skipped
+    if (startingPhase === 'plan' && !skipPlanning) {
+      saveTemplate(stringDescription);
+    }
 
+    printCostSummary();
+    log(chalk.green('\n============================================='));
+    log(chalk.green('          🎉 AUTONOMOUS WORKFLOW COMPLETE       '));
+    log(chalk.green('=============================================\n'));
   } catch (err: unknown) {
     log(chalk.red('\n[Supervisor Error] Autonomous loop crashed.'));
     log(err instanceof Error ? err.stack || err.message : String(err));
+    throw err; // throw to be caught by worktree wrapper
   } finally {
     await cleanupBackgroundProcesses();
+  }
+  }; // End of runCore
+
+  if (useWorktree && worktreePath) {
+    const parentCtx = executionContext.getStore() || { projectPath: process.cwd() };
+    await executionContext.run({ ...parentCtx, projectPath: worktreePath }, async () => {
+      try {
+        await runCore();
+        // Assume success if no throw
+        // Switch back to parent context to merge, so cwd is correct
+      } catch (e) {
+        throw e;
+      }
+    });
+
+    // Merge & Cleanup outside the child context so git commands run on original dir
+    try {
+      await mergeWorktree(branchName);
+    } finally {
+      await removeWorktree(worktreePath);
+    }
+  } else {
+    await runCore();
   }
 }

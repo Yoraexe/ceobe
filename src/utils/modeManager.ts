@@ -22,6 +22,7 @@ export type CeobeMode = 'autonomous' | 'ask';
 
 export interface CeobeConfig {
   mode: CeobeMode;
+  worktree?: boolean;
   updatedAt: string;
 }
 
@@ -115,12 +116,12 @@ export function readConfig(): CeobeConfig {
   let loadedConfig: CeobeConfig;
   
   if (!fs.existsSync(configPath)) {
-    loadedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
+    loadedConfig = { mode: 'autonomous', worktree: false, updatedAt: new Date().toISOString() };
   } else {
     try {
       loadedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
     } catch {
-      loadedConfig = { mode: 'autonomous', updatedAt: new Date().toISOString() };
+      loadedConfig = { mode: 'autonomous', worktree: false, updatedAt: new Date().toISOString() };
     }
   }
   
@@ -149,7 +150,17 @@ export function getActiveMode(): CeobeMode {
 }
 
 export function setMode(mode: CeobeMode): void {
-  writeConfig({ mode, updatedAt: new Date().toISOString() });
+  const current = readConfig();
+  writeConfig({ ...current, mode, updatedAt: new Date().toISOString() });
+}
+
+export function getWorktreeMode(): boolean {
+  return readConfig().worktree ?? false;
+}
+
+export function setWorktreeMode(worktree: boolean): void {
+  const current = readConfig();
+  writeConfig({ ...current, worktree, updatedAt: new Date().toISOString() });
 }
 
 // ─────────────────────────────────────────────

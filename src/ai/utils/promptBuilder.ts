@@ -54,15 +54,24 @@ function getCriticalConstraintEcho(): string {
 --- END REMINDERS ---`;
 }
 
-export function buildBRDPrompt(taskDescription: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
+export function buildBRDPrompt(taskDescription: string, selectedSkills: string[] = [], auditorFeedback?: string, isCreativeMode?: boolean): string {
   const rules = readCeobeRules();
   const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
   const context = assembleBaseContext(rules, skillsContext, auditorFeedback);
+  
+  const ponytailLadder = isCreativeMode ? '' : `\n--- THE PONYTAIL LADDER (DEFAULT EFFICIENCY MODE) ---
+You are a lazy senior developer. Lazy means efficient.
+1. YAGNI: Do not over-engineer.
+2. Reuse existing code if possible.
+3. Use Standard Library (STDLIB) features over external packages.
+4. Keep abstractions minimal.
+--- END PONYTAIL LADDER ---\n`;
   
   return `You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 1: DISCOVERY & BRD.
 
 ${context}
+${ponytailLadder}
 
 User Input (Description, Image, or External Document):
 ${taskDescription}
@@ -81,15 +90,21 @@ ${readTemplate('brd-template.md')}
 ${getCriticalConstraintEcho()}`;
 }
 
-export function buildDesignPrompt(brdContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
+export function buildDesignPrompt(brdContent: string, selectedSkills: string[] = [], auditorFeedback?: string, isCreativeMode?: boolean): string {
   const rules = readCeobeRules();
   const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
   const context = assembleBaseContext(rules, skillsContext, auditorFeedback);
+  
+  const ponytailLadder = isCreativeMode ? '' : `\n--- THE PONYTAIL LADDER (DEFAULT EFFICIENCY MODE) ---
+1. Use native CSS/Platform defaults over huge UI libraries unless explicitly asked.
+2. Don't build generic UI components if a simpler solution works.
+--- END PONYTAIL LADDER ---\n`;
   
   return `You are the Design Lead of the Ceobe AI Engineering System.
 STAGE 1.5: UI/UX & DESIGN SYSTEM.
 
 ${context}
+${ponytailLadder}
 
 Current BRD Context:
 ${brdContent}
@@ -102,15 +117,23 @@ ${readTemplate('design-template.md')}
 ${getCriticalConstraintEcho()}`;
 }
 
-export function buildArchitecturePrompt(brdContent: string, designContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
+export function buildArchitecturePrompt(brdContent: string, designContent: string, selectedSkills: string[] = [], auditorFeedback?: string, isCreativeMode?: boolean): string {
   const rules = readCeobeRules();
   const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
   const context = assembleBaseContext(rules, skillsContext, auditorFeedback);
+  
+  const ponytailLadder = isCreativeMode ? '' : `\n--- THE PONYTAIL LADDER (DEFAULT EFFICIENCY MODE) ---
+You are a lazy senior developer. Lazy means efficient.
+1. YAGNI: Do not build infrastructure that wasn't requested.
+2. Reuse existing code / standard library / native platform features.
+3. Deletion over addition. Boring over clever. Fewest files possible.
+--- END PONYTAIL LADDER ---\n`;
   
   return `You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 2: ARCHITECTURE DESIGN.
 
 ${context}
+${ponytailLadder}
 
 Current BRD Context:
 ${brdContent}
@@ -126,15 +149,23 @@ ${readTemplate('architecture-template.md')}
 ${getCriticalConstraintEcho()}`;
 }
 
-export function buildImplementationPrompt(architectureContent: string, selectedSkills: string[] = [], auditorFeedback?: string): string {
+export function buildImplementationPrompt(architectureContent: string, selectedSkills: string[] = [], auditorFeedback?: string, isCreativeMode?: boolean): string {
   const rules = readCeobeRules();
   const skillsContext = selectedSkills.length > 0 ? readSpecificSkills(selectedSkills) : '';
   const context = assembleBaseContext(rules, skillsContext, auditorFeedback);
+
+  const ponytailLadder = isCreativeMode ? '' : `\n--- THE PONYTAIL LADDER (DEFAULT EFFICIENCY MODE) ---
+You are a lazy senior developer. Lazy means efficient.
+1. Use Standard Library (STDLIB) features over external packages.
+2. No abstractions that weren't explicitly requested.
+3. Keep the checklist minimal.
+--- END PONYTAIL LADDER ---\n`;
   
   return `You are the Brain of the Ceobe AI Engineering System. You are a Senior Architect.
 STAGE 3: EXECUTION CHECKLIST (JSON).
 
 ${context}
+${ponytailLadder}
 
 Current Architecture Context:
 ${architectureContent}
@@ -199,6 +230,13 @@ DevOps Configuration:
 ${devopsConfig}
 
 Evaluate the plan. If there are contradictions, missing safety nets, skipped tests, or missing Docker configurations, you MUST reject the plan.
+Furthermore, enforce THE PONYTAIL LADDER (Efficiency Mode): Reject any plan that is over-engineered, uses unnecessary external dependencies when STDLIB is available, or creates unneeded abstractions.
+
 If the plan is perfect, you must output EXACTLY "APPROVE".
-If the plan has issues, you must output a list of SPECIFIC feedback points that the Planner needs to fix. Do not write "REJECT", just write the feedback.`;
+If the plan has issues, you must output a list of SPECIFIC feedback points that the Planner needs to fix. Do not write "REJECT", just write the feedback.
+When pointing out over-engineering, use one of the following tags at the start of your feedback line:
+- [DELETE]: For dead code, boilerplate, or YAGNI abstractions that must be removed.
+- [STDLIB]: When an external package should be replaced by a standard library function.
+- [NATIVE]: When a framework feature should be replaced by a native platform feature.
+- [SHRINK]: When the logic is too complex and must be simplified.`;
 }
