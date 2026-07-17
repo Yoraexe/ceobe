@@ -38,7 +38,6 @@ const PRICING: Record<string, { input: number; output: number }> = {
   'deepseek-coder': { input: 0.14, output: 0.28 },
   'qwen-max': { input: 0.40, output: 1.20 },
   'qwen-plus': { input: 0.15, output: 0.45 },
-  'kimi': { input: 0.20, output: 0.60 },
   'llama-3': { input: 0.15, output: 0.15 },
   'kimi-k2.6-plus': { input: 0.20, output: 0.60 },
   'qwen-3-max': { input: 0.30, output: 0.90 }

@@ -1,3 +1,9 @@
+// Tujuan: Mengonfigurasi vitest untuk menjalankan unit testing dan menetapkan batas minimum cakupan kode (coverage threshold) sebesar 80%.
+// Caller: Dijalankan oleh npm run test / developer CLI.
+// Dependensi: vitest/config, path
+// Main Functions: default export defineConfig
+// Side Effects: Tidak ada.
+
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 

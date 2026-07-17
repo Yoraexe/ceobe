@@ -20,7 +20,7 @@ export class AnthropicAdapter implements IProviderAdapter {
   readonly modelId: string;
   private client: Anthropic;
 
-  constructor(modelId: string = 'claude-sonnet-4-5') {
+  constructor(modelId: string = 'claude-4-5-sonnet') {
     if (!env.ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY.trim() === '') {
       throw new Error('[AnthropicAdapter] ANTHROPIC_API_KEY is not set or empty.'); // Fix H-24
     }
