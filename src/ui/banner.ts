@@ -165,6 +165,22 @@ export function printHelp(): void {
     );
   }
 
+  if (process.env.CEOBE_UNLOCK_PENTEST === 'true') {
+    console.log('');
+    console.log(chalk.bold('  PENTEST MODES (ceobe pentest --mode <mode>)'));
+    console.log(chalk.dim('  ─────────────────────────────────────────────────'));
+    console.log(`  ${chalk.red('auto')}               ${chalk.dim('Auto-detect berdasarkan target')}`);
+    console.log(`  ${chalk.red('bug-bounty')}         ${chalk.dim('HackerOne / Bugcrowd / Intigriti — scope-strict')}`);
+    console.log(`  ${chalk.red('red-team')}           ${chalk.dim('Stealth ops, persistence, lateral movement')}`);
+    console.log(`  ${chalk.red('ctf')}                ${chalk.dim('HackTheBox / TryHackMe / picoCTF — speed-first')}`);
+    console.log(`  ${chalk.red('blue-team')}          ${chalk.dim('Detection, IR, defensive audit')}`);
+    console.log(`  ${chalk.red('offensive')}          ${chalk.dim('Aggressive exploitation, PoC chains')}`);
+    console.log(`  ${chalk.red('grey-hat')}           ${chalk.dim('Balanced offensive/defensive')}`);
+    console.log(`  ${chalk.red('forensic')}           ${chalk.dim('Evidence preservation, chain-of-custody')}`);
+    console.log(`  ${chalk.red('reverse-engineering')} ${chalk.dim('Binary analysis, decompilation')}`);
+    console.log(`  ${chalk.red('mobile-pentest')}     ${chalk.dim('Android / iOS assessment')}`);
+  }
+
 
 
   console.log('');

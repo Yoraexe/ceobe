@@ -33,6 +33,15 @@ registerSystemCommands(program);
 registerExportRulesCommand(program);
 registerPentestCommand(program);
 
+// Secret unlock command
+program
+  .command('eunectes', { hidden: true })
+  .description('Unlock pentest modes')
+  .action(() => {
+    process.env.CEOBE_UNLOCK_PENTEST = 'true';
+    printHelp();
+  });
+
 // Help & default (no args)
 program
   .command('help')
