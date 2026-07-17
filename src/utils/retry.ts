@@ -6,6 +6,13 @@ interface RetryOptions {
   initialDelayMs?: number;
 }
 
+// Sanitizer to mask API keys from leaking into logs
+function sanitizeError(msg: string): string {
+  if (!msg) return msg;
+  return msg.replace(/Bearer\s+[A-Za-z0-9\-_.]+/gi, 'Bearer ***')
+            .replace(/sk-[a-zA-Z0-9_-]{20,}/gi, 'sk-***');
+}
+
 export async function withRetry<T>(
   operation: () => Promise<T>,
   options: RetryOptions = {}
@@ -20,19 +27,27 @@ export async function withRetry<T>(
     } catch (error: unknown) {
       attempt++;
       
-      const msg = error instanceof Error ? error.message : String(error);
+      let msg = error instanceof Error ? error.message : String(error);
+      msg = sanitizeError(msg);
+      
       const errObj = error as Record<string, unknown>;
       const resp = errObj?.response as Record<string, unknown> | undefined;
       const status = (errObj?.status ?? resp?.status ?? errObj?.statusCode) as number | undefined;
       
+      // Sanitized Error
+      const sanitizedError = error instanceof Error ? error : new Error(msg);
+      if (error instanceof Error) {
+        sanitizedError.message = msg;
+      }
+      
       // Abort early if it's a 4xx error (except 429 Rate Limit)
       if (status && status >= 400 && status < 500 && status !== 429) {
-        throw error;
+        throw sanitizedError;
       }
 
 
       if (attempt >= maxRetries) {
-        throw error;
+        throw sanitizedError;
       }
       
       log(chalk.yellow(`\n[Retry] Operation failed (${msg}). Retrying in ${Math.round(delay)}ms... (Attempt ${attempt}/${maxRetries})`));

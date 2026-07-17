@@ -41,6 +41,7 @@ export async function executePlan(
   let jsonHealCount = 0;
   let commandHealCount = 0;
   let maxTokensRetries = 0;
+  let consecutiveSuccesses = 0;
 
   try {
     const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
@@ -105,6 +106,7 @@ export async function executePlan(
       messages.push({ role: 'assistant', content: filteredContent });
 
       if (response.stop_reason === 'max_tokens') {
+        consecutiveSuccesses = 0;
         maxTokensRetries++;
         if (maxTokensRetries > 3) {
           throw new Error('Model repeatedly hitting max_tokens limit. Context may be too large.');
@@ -128,7 +130,10 @@ export async function executePlan(
       } else {
         // Only reset if we are confident the model is not alternating between max_tokens and normal stops
         // By keeping a small buffer (decrementing instead of resetting to 0), we track sustained token bleeds.
-        if (maxTokensRetries > 0) {
+        consecutiveSuccesses++;
+        if (consecutiveSuccesses >= 2) {
+          maxTokensRetries = 0;
+        } else if (maxTokensRetries > 0) {
           maxTokensRetries--;
         }
       }
@@ -176,6 +181,8 @@ export async function executePlan(
           if (lastResult && lastResult.type === 'tool_result' && typeof lastResult.content === 'string') {
             lastResult.content += healDirective;
           }
+        } else {
+          commandHealCount = 0; // Fix H-08: Reset counter on successful command
         }
         
         if (hasFinishTask) {

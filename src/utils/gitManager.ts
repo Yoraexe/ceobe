@@ -125,6 +125,7 @@ export async function rollbackToSnapshot(snapshotHash: string): Promise<void> {
   try {
     log(chalk.red(`\n[GitManager] 🔄 Memulai rollback ke snapshot ${snapshotHash.substring(0, 8)}...`));
     await execAsync(`git reset --hard ${snapshotHash}`, { cwd: dir });
+    await execAsync('git clean -fd', { cwd: dir }); // Fix M-33: Clean untracked files left behind
     log(chalk.green('[GitManager] ✅ Rollback berhasil. Codebase dikembalikan ke kondisi sebelum eksekusi AI.'));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -138,6 +139,11 @@ export async function rollbackToSnapshot(snapshotHash: string): Promise<void> {
  * Returns the absolute path of the new worktree.
  */
 export async function createWorktree(branchName: string): Promise<string> {
+  // Fix M-32: Validate branchName to prevent shell injection
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(branchName)) {
+    throw new Error(`Invalid branch name format: ${branchName}`);
+  }
+  
   const dir = cwd();
   const isRepo = await isGitRepo(dir);
   if (!isRepo) throw new Error('Not a git repository. Cannot create worktree.');

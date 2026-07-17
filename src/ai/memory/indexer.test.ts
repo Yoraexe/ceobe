@@ -60,6 +60,14 @@ describe('indexer', () => {
       mtimeMs: Date.now()
     }) as any);
     
+    vi.spyOn(fs, 'lstatSync').mockImplementation((p: any) => ({
+      isDirectory: () => !p.endsWith('.ts'),
+      isFile: () => p.endsWith('.ts'),
+      isSymbolicLink: () => false,
+      size: 100,
+      mtimeMs: Date.now()
+    }) as any);
+    
     // Mock file content (small file, 1 chunk)
     vi.spyOn(fs, 'readFileSync').mockReturnValue('log("hello");');
     

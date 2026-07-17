@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer';
 
-export interface ReconResult {
+interface ReconResult {
   url: string;
   title: string;
   frameworks: string[];
@@ -50,9 +50,14 @@ export async function handleReverseEngineer(input: Record<string, any>): Promise
     targetUrl = 'https://' + url;
   }
 
+  // SSRF Protection
+  const blockedDomains = ['localhost', '127.0.0.1', '169.254.169.254', '0.0.0.0', '::1'];
+  if (blockedDomains.some(d => targetUrl.includes(d)) || targetUrl.match(/https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
+    return 'Error: SSRF Protection: Access to private/local networks is blocked.';
+  }
+
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: true
   });
 
   const apiEndpoints: Set<string> = new Set();

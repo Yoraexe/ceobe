@@ -46,7 +46,21 @@ export function trimMessages(
     break; // Safe boundary reached
   }
 
-  return [firstMessage, ...trimmableMessages];
+  const rawTrimmed = [firstMessage, ...trimmableMessages];
+  
+  // Fix M-28: Enforce Gemini role alternation by collapsing consecutive identical roles
+  const collapsed: NormalizedMessage[] = [];
+  for (const msg of rawTrimmed) {
+    if (collapsed.length > 0 && collapsed[collapsed.length - 1].role === msg.role) {
+      const last = collapsed[collapsed.length - 1];
+      const lastArr = Array.isArray(last.content) ? last.content : [{ type: 'text', text: last.content as string }];
+      const msgArr = Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: msg.content as string }];
+      last.content = [...lastArr, ...msgArr] as NormalizedContentBlock[];
+    } else {
+      collapsed.push({ ...msg });
+    }
+  }
+  return collapsed;
 }
 
 /**
@@ -77,7 +91,8 @@ export function truncateModelResponse(content: NormalizedContentBlock[], limit: 
        const tailIdx = splitAtNewline(c.text, c.text.length - Math.floor(limit / 2), 'forward');
        const head = c.text.substring(0, headIdx);
        const tail = c.text.substring(tailIdx);
-       return { ...c, text: head + '\n\n...[Reasoning Truncated]...\n\n' + tail };
+       // Fix M-27: Prevent mid-JSON codeblock splits from breaking parser downstream
+       return { ...c, text: head + '\n```\n...[Reasoning Truncated]...\n```\n' + tail };
     }
     return c;
   });
@@ -128,7 +143,8 @@ export function cleanupOldSelfHeals(messages: NormalizedMessage[]): NormalizedMe
         ...msg,
         content: msg.content.map((c: any) => {
           if (c.type === 'tool_result' && typeof c.content === 'string') {
-             return { ...c, content: c.content.replace(/\[SELF-HEAL \d+\/\d+\].*/g, '[Older Self-Heal Omitted]') };
+             // Fix L-12: Use a strict multiline regex that only matches the self-heal line itself, preventing over-match
+             return { ...c, content: c.content.replace(/^\[SELF-HEAL \d+\/\d+\].*$/gm, '[Older Self-Heal Omitted]') };
           }
           return c;
         })

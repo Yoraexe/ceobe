@@ -22,6 +22,7 @@ export const mockExec = vi.fn((_cmd, _opts, callback) => {
 export const mockSpawn = vi.fn().mockReturnValue({ exitCode: null, kill: vi.fn() });
 vi.mock('child_process', () => ({
   exec: (cmd: string, opts: any, callback: any) => mockExec(cmd, opts, callback),
+  execFile: (cmd: string, args: any, opts: any, callback: any) => mockExec(cmd, opts, callback),
   spawn: (cmd: string, opts: any) => mockSpawn(cmd, opts)
 }));
 vi.mock('../../utils/context', () => ({

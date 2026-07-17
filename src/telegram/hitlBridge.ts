@@ -8,6 +8,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { ConfirmationBridge } from '../utils/modeManager';
 import { randomUUID } from 'crypto';
+import { readAllKeys } from '../utils/keyManager';
 
 export class TelegramHITLBridge implements ConfirmationBridge {
   private bot: TelegramBot;
@@ -81,6 +82,16 @@ export class TelegramHITLBridge implements ConfirmationBridge {
         // 3. Dengarkan jawaban tombol
         listener = (query: TelegramBot.CallbackQuery) => {
           if (!query.data || query.message?.chat.id !== this.chatId) return;
+
+          // Fix M-02: Verify query.from.id against allowed users
+          const keys = readAllKeys();
+          const allowed = keys.TELEGRAM_ALLOWED_USERS || process.env.TELEGRAM_ALLOWED_USERS || '';
+          const allowedIds = allowed.split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
+          
+          if (!query.from?.id || !allowedIds.includes(query.from.id)) {
+            this.bot.answerCallbackQuery(query.id, { text: '❌ Anda tidak diizinkan menekan tombol ini.', show_alert: true });
+            return;
+          }
 
           if (query.data === cbYes || query.data === cbNo || query.data === cbAbort) {
             cleanup();

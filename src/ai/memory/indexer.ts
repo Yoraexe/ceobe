@@ -49,7 +49,9 @@ function saveCache(cache: FileCache): void {
   const cachePath = getCacheFilePath();
   const dir = path.dirname(cachePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf8');
+  const tempPath = cachePath + '.tmp.' + Math.random().toString(36).substring(2);
+  fs.writeFileSync(tempPath, JSON.stringify(cache, null, 2), 'utf8');
+  fs.renameSync(tempPath, cachePath);
 }
 
 function getAllFiles(dir: string, fileList: string[] = []): string[] {
@@ -60,7 +62,8 @@ function getAllFiles(dir: string, fileList: string[] = []): string[] {
     if (IGNORED_DIRS.includes(file)) continue;
     
     const fullPath = path.join(dir, file);
-    const stat = fs.statSync(fullPath);
+    const stat = fs.lstatSync(fullPath);
+    if (stat.isSymbolicLink()) continue; // Fix H-11: Prevent symlink traversal
     
     if (stat.isDirectory()) {
       getAllFiles(fullPath, fileList);
@@ -89,6 +92,12 @@ export async function indexWorkspace(): Promise<void> {
   
   try {
     const files = getAllFiles(workspaceRoot);
+    
+    // Fix M-36: Enforce maximum file count limit to prevent OOM crashes on huge repos
+    if (files.length > 5000) {
+      throw new Error(`[Indexer] Workspace too large (${files.length} files). Maximum limit is 5000 files to prevent OOM.`);
+    }
+    
     const cache = loadCache();
     const existingEmbeddings = loadEmbeddings();
     
@@ -245,4 +254,8 @@ export async function indexWorkspace(): Promise<void> {
     spinner.fail(chalk.red(`Indexing failed: ${msg}`));
     throw error;
   }
+}
+
+export async function getProjectASTSummary(): Promise<string> {
+  return "AST Summary Not Implemented Yet";
 }

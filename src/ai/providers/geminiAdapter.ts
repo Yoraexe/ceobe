@@ -130,15 +130,18 @@ export class GeminiAdapter implements IProviderAdapter {
     
     // Parse Gemini response back to NormalizedResponse
     const responseContent: NormalizedContentBlock[] = [];
-    let stopReason = 'end_turn';
+    let stopReason: 'tool_use' | 'end_turn' | 'max_tokens' | 'error' = 'end_turn';
 
     if (res.candidates && res.candidates.length > 0) {
       const candidate = res.candidates[0];
       if (candidate.finishReason === 'MAX_TOKENS') {
         stopReason = 'max_tokens';
       } else if (candidate.finishReason && !['STOP', 'MAX_TOKENS'].includes(candidate.finishReason)) {
-        stopReason = 'error';
-        responseContent.push({ type: 'text', text: `[Gemini Error] Stopped due to finish reason: ${candidate.finishReason}` });
+        if (candidate.finishReason === 'SAFETY') {
+          throw new Error('[Gemini Safety Filter] The model response was blocked due to safety policies.'); // Fix H-18
+        }
+        // Fix M-22: Throw error instead of swallowing it into text output
+        throw new Error(`[Gemini Error] Stopped due to unexpected finish reason: ${candidate.finishReason}`);
       }
       
       const parts = candidate.content?.parts || [];
@@ -150,7 +153,8 @@ export class GeminiAdapter implements IProviderAdapter {
           stopReason = 'tool_use';
           responseContent.push({
             type: 'tool_use',
-            id: p.functionCall.name + '_' + crypto.randomUUID().substring(0, 8),
+            // Fix L-09: Do not truncate UUID to prevent collision risk
+            id: p.functionCall.name + '_' + crypto.randomUUID(),
             name: p.functionCall.name,
             input: p.functionCall.args || {}
           });

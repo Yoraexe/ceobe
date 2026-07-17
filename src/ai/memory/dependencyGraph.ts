@@ -15,7 +15,7 @@ export interface DependencyNode {
   exports: string[];      // exported symbol names
 }
 
-export function getDependencyGraphFilePath(): string {
+function getDependencyGraphFilePath(): string {
   return path.join(getProjectDir(), '.ceobe', 'dependency-graph.json');
 }
 
@@ -28,10 +28,12 @@ export function saveDependencyGraph(graph: Map<string, DependencyNode>): void {
   }
 
   const obj = Object.fromEntries(graph);
-  fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
+  const tempPath = filePath + '.tmp.' + Math.random().toString(36).substring(2);
+  fs.writeFileSync(tempPath, JSON.stringify(obj, null, 2), 'utf8');
+  fs.renameSync(tempPath, filePath);
 }
 
-export function loadDependencyGraph(): Map<string, DependencyNode> {
+function loadDependencyGraph(): Map<string, DependencyNode> {
   const filePath = getDependencyGraphFilePath();
   if (!fs.existsSync(filePath)) {
     return new Map();
@@ -102,10 +104,4 @@ export function buildDependencyGraph(workspaceRoot: string, filesToProcess: stri
   }
 
   return graph;
-}
-
-export function getAffectedFiles(filePath: string, graph: Map<string, DependencyNode>): string[] {
-  const node = graph.get(filePath.replace(/\\/g, '/'));
-  if (!node) return [];
-  return node.importedBy;
 }

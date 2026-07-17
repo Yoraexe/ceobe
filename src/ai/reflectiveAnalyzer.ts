@@ -36,7 +36,9 @@ Analyze the following logs to identify:
 3. Missing skills or knowledge gaps.
 
 Log data:
-${recentLines}
+<LOG_ENTRIES>
+${recentLines.replace(/<LOG_ENTRIES>/gi, '[SANITIZED]').replace(/<\/LOG_ENTRIES>/gi, '[SANITIZED]')}
+</LOG_ENTRIES>
 
 Output your analysis as a strict JSON object with this shape:
 {

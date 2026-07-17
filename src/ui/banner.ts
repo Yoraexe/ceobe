@@ -11,8 +11,6 @@ import chalk from 'chalk';
 import * as path from 'path';
 
 import packageJson from '../../package.json';
-
-export const APP_NAME = 'Ceobe Mastery CLI';
 export const VERSION = packageJson.version || '1.15.0';
 
 // ─────────────────────────────────────────────────────────────
@@ -22,10 +20,10 @@ export const VERSION = packageJson.version || '1.15.0';
 export function printBanner(): void {
   const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER;
   const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER;
-  
+
   const plannerProvider = rawPlanner || rawExecutor;
   const executorProvider = rawExecutor || rawPlanner;
-  
+
   let projectName = 'default';
   try {
     const projectDir = getProjectDir();
@@ -47,7 +45,7 @@ export function printBanner(): void {
   console.log('');
   console.log(
     chalk.gray('  Autonomous AI Engineering Orchestrator') +
-    chalk.dim(` · v${VERSION} [Mastery Audit Edition]`)
+    chalk.dim(` · v${VERSION} [Mastery Audit Edition + Eunectes Pentest]`)
   );
   console.log(
     chalk.dim(`  🧠 Planner: ${plannerDisplay}`) +
@@ -93,10 +91,6 @@ export function ok(msg: string): void {
 
 export function warn(msg: string): void {
   console.log(chalk.yellow(`  ⚠️   ${msg}`));
-}
-
-export function fail(msg: string): void {
-  console.log(chalk.red(`  ✗  ${msg}`));
 }
 
 export function info(msg: string): void {
@@ -148,19 +142,21 @@ export function printHelp(): void {
   console.log(`  ${chalk.cyan('ceobe')} ${chalk.white('<command>')} ${chalk.gray('[options]')}\n`);
 
   const cmds: [string, string, string?][] = [
-    ['🤖  auto',    '"Build a REST API in Go"',  'Full autonomous pipeline (plan→audit→execute)'],
-    ['📋  plan',    '"Landing page with auth"',   'Generate BRD, design, architecture & task plan'],
-    ['🔍  audit',   '',                           'QA-check the plan before execution'],
-    ['🚀  execute', '',                           'Execute the approved task plan'],
-    ['📊  status',  '',                           'Show pipeline progress & plan files'],
-    ['🧠  index',   '',                           'Index workspace for semantic memory (RAG)'],
-    ['🩺  doctor',  '',                           'Diagnose API keys, providers & workspace'],
-    ['🔑  key',     'set/get/list/remove',         'Manage API keys & provider config'],
-    ['🔄  mode',    'autonomous | ask',            'Switch execution mode'],
-    ['📝  log',     '[-n <lines>]',               'Show latest execution log'],
-    ['🔃  setup',   '',                           'Interactive first-time setup wizard'],
-    ['📡  daemon',  '--telegram',                 'Start Ceobe as a remote Telegram bot'],
-    ['💣  reset',   '--yes',                      'Clear all plans and state files'],
+    ['🤖  auto',     '"Build a REST API in Go"',        'Full autonomous pipeline (plan→audit→execute)'],
+    ['🎯  pentest',  '<target> [--mode <mode>]',         'Autonomous pentest engagement (Eunectes-powered)'],
+    ['🔍  fullscan', '<target>',                         'Alias: pentest --mode auto (Eunectes UX)'],
+    ['📋  plan',     '"Landing page with auth"',         'Generate BRD, design, architecture & task plan'],
+    ['🔎  audit',    '',                                 'QA-check the plan before execution'],
+    ['🚀  execute',  '',                                 'Execute the approved task plan'],
+    ['📊  status',   '',                                 'Show pipeline progress & plan files'],
+    ['🧠  index',    '',                                 'Index workspace for semantic memory (RAG)'],
+    ['🩺  doctor',   '',                                 'Diagnose API keys, providers & workspace'],
+    ['🔑  key',      'set/get/list/remove',              'Manage API keys & provider config'],
+    ['🔄  mode',     'autonomous | ask',                 'Switch execution mode'],
+    ['📝  log',      '[-n <lines>]',                    'Show latest execution log'],
+    ['🔃  setup',    '',                                 'Interactive first-time setup wizard'],
+    ['📡  daemon',   '--telegram',                       'Start Ceobe as a remote Telegram bot'],
+    ['💣  reset',    '--yes',                            'Clear all plans and state files'],
   ];
 
   console.log(chalk.bold('  COMMANDS'));
@@ -170,6 +166,20 @@ export function printHelp(): void {
       `  ${chalk.cyan(cmd.padEnd(17))} ${chalk.gray(arg.padEnd(26))} ${desc ? chalk.dim(desc) : ''}`
     );
   }
+
+  console.log('');
+  console.log(chalk.bold('  PENTEST MODES (ceobe pentest --mode <mode>)'));
+  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
+  console.log(`  ${chalk.red('auto')}               ${chalk.dim('Auto-detect berdasarkan target')}`);
+  console.log(`  ${chalk.red('bug-bounty')}         ${chalk.dim('HackerOne / Bugcrowd / Intigriti — scope-strict')}`);
+  console.log(`  ${chalk.red('red-team')}           ${chalk.dim('Stealth ops, persistence, lateral movement')}`);
+  console.log(`  ${chalk.red('ctf')}                ${chalk.dim('HackTheBox / TryHackMe / picoCTF — speed-first')}`);
+  console.log(`  ${chalk.red('blue-team')}          ${chalk.dim('Detection, IR, defensive audit')}`);
+  console.log(`  ${chalk.red('offensive')}          ${chalk.dim('Aggressive exploitation, PoC chains')}`);
+  console.log(`  ${chalk.red('grey-hat')}           ${chalk.dim('Balanced offensive/defensive')}`);
+  console.log(`  ${chalk.red('forensic')}           ${chalk.dim('Evidence preservation, chain-of-custody')}`);
+  console.log(`  ${chalk.red('reverse-engineering')} ${chalk.dim('Binary analysis, decompilation')}`);
+  console.log(`  ${chalk.red('mobile-pentest')}     ${chalk.dim('Android / iOS assessment')}`);
 
   console.log('');
   console.log(chalk.bold('  TELEGRAM COMMANDS (When running daemon --telegram)'));
@@ -202,10 +212,10 @@ export function printHelp(): void {
   console.log(chalk.dim('  ─────────────────────────────────────────────────'));
   console.log(`  ${chalk.dim('1.')} ${chalk.cyan('ceobe setup')}                  ${chalk.dim('Configure your API keys')}`);
   console.log(`  ${chalk.dim('2.')} ${chalk.cyan('ceobe auto "your idea"')}       ${chalk.dim('Let Ceobe build it fully autonomously')}`);
-  console.log(`  ${chalk.dim('   or')}`);
-  console.log(`  ${chalk.dim('2.')} ${chalk.cyan('ceobe plan "your idea"')}       ${chalk.dim('Generate plan for manual review')}`);
-  console.log(`  ${chalk.dim('3.')} ${chalk.cyan('ceobe audit')}                  ${chalk.dim('Verify plan integrity')}`);
-  console.log(`  ${chalk.dim('4.')} ${chalk.cyan('ceobe execute')}                ${chalk.dim('Build the project')}`);
+  console.log(`  ${chalk.dim('   or')} ${chalk.cyan('ceobe fullscan <target>')}   ${chalk.dim('Run autonomous pentest')}`);
+  console.log(`  ${chalk.dim('3.')} ${chalk.cyan('ceobe plan "your idea"')}       ${chalk.dim('Generate plan for manual review')}`);
+  console.log(`  ${chalk.dim('4.')} ${chalk.cyan('ceobe audit')}                  ${chalk.dim('Verify plan integrity')}`);
+  console.log(`  ${chalk.dim('5.')} ${chalk.cyan('ceobe execute')}                ${chalk.dim('Build the project')}`);
   console.log('');
   console.log(chalk.dim(`  Docs & source: https://github.com/your-repo/ceobe`));
   console.log('');

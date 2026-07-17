@@ -15,21 +15,21 @@ describe('modeManager', () => {
   it('readConfig should return default if file does not exist', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     const config = readConfig();
-    expect(config.mode).toBe('autonomous');
+    expect(config.mode).toBe('ask');
   });
 
   it('readConfig should return file content if exists', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'ask', updatedAt: 'now' }));
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'autonomous', updatedAt: 'now' }));
     const config = readConfig();
-    expect(config.mode).toBe('ask');
+    expect(config.mode).toBe('autonomous');
   });
 
   it('readConfig should return default on parse error', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('invalid-json');
     const config = readConfig();
-    expect(config.mode).toBe('autonomous');
+    expect(config.mode).toBe('ask');
   });
 
   it('writeConfig should create dir and write file', () => {
@@ -41,21 +41,25 @@ describe('modeManager', () => {
 
   it('getActiveMode and setMode should work', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    setMode('ask');
-    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('ask'), 'utf8');
+    setMode('autonomous');
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.any(String), 
+      expect.stringContaining('autonomous'), 
+      expect.objectContaining({ encoding: 'utf8' })
+    );
   });
 
   it('printModeBadge should output to console', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    printModeBadge(); // autonomous
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('OTONOM'));
+    printModeBadge(); // ask by default now
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('BERTANYA'));
     
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'ask' }));
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ mode: 'autonomous' }));
     clearConfigCacheForTesting();
-    printModeBadge(); // ask
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('BERTANYA'));
+    printModeBadge(); // autonomous
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('OTONOM'));
     spy.mockRestore();
   });
 

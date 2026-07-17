@@ -21,6 +21,9 @@ export class AnthropicAdapter implements IProviderAdapter {
   private client: Anthropic;
 
   constructor(modelId: string = 'claude-sonnet-4-5') {
+    if (!env.ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY.trim() === '') {
+      throw new Error('[AnthropicAdapter] ANTHROPIC_API_KEY is not set or empty.'); // Fix H-24
+    }
     this.modelId = modelId;
     const gatewayUrl = getGatewayUrl('anthropic');
     this.client = new Anthropic({
@@ -41,8 +44,8 @@ export class AnthropicAdapter implements IProviderAdapter {
             cache_control: prompt.length > 2000 ? { type: 'ephemeral' } : undefined 
           }
         ] 
-      : (prompt as any[]).map((block, index) => {
-          let outBlock: any = { type: 'text', text: '' };
+      : (prompt as NormalizedContentBlock[]).map((block, index) => {
+          let outBlock: Record<string, unknown> = { type: 'text', text: '' };
           if (block.type === 'text') outBlock = { type: 'text', text: block.text };
           if (block.type === 'image' && block.source) {
             outBlock = {
@@ -55,15 +58,10 @@ export class AnthropicAdapter implements IProviderAdapter {
             };
           }
           
-          if (hasExplicitCache) {
-             if (block.cache_control) outBlock.cache_control = { type: 'ephemeral' };
-          } else {
-             // Default: Put cache control on the last block
-             if (index === (prompt as any[]).length - 1) {
-                outBlock.cache_control = { type: 'ephemeral' };
-             }
+          if (block.cache_control || (hasExplicitCache && index === prompt.length - 1)) {
+            outBlock.cache_control = { type: 'ephemeral' }; // Fix L-06: Strict type for cache_control
           }
-          return outBlock;
+          return outBlock as any;
         });
 
     const response = await withRetry(() =>
@@ -98,7 +96,8 @@ export class AnthropicAdapter implements IProviderAdapter {
     // Inject cache_control into the very last user message to cache history up to that point
     const anthropicMessages = messages.map(m => {
        const content = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content;
-       return { role: m.role, content: JSON.parse(JSON.stringify(content)) };
+       // Fix L-08: Use map with spread syntax instead of JSON round-trip (which drops Buffers/Binaries)
+       return { role: m.role, content: content.map((c: any) => ({ ...c })) };
     }) as any[];
     
     for (let i = anthropicMessages.length - 1; i >= 0; i--) {

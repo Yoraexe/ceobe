@@ -10,6 +10,15 @@ vi.mock('../providers/router', () => ({
   })
 }));
 
+vi.mock('../../utils/projectFileOps', () => ({
+  readProjectFile: vi.fn().mockResolvedValue('project file content')
+}));
+
+vi.mock('../../utils/stateManager', () => ({
+  readState: vi.fn().mockReturnValue({ phase: 1, currentTasks: [], completedTasks: [], openIssues: [] }),
+  writeState: vi.fn()
+}));
+
 vi.mock('../../utils/contextLoader', () => ({
   getAvailableSkills: vi.fn().mockReturnValue(['mock-skill']),
   readCeobeRules: vi.fn().mockReturnValue('mock rules'),
@@ -73,7 +82,7 @@ describe('planner', () => {
   });
 
   it('auditPlan should return true if approved', async () => {
-    mockGenerate.mockResolvedValueOnce({ text: 'APPROVED', usage: { input_tokens: 10, output_tokens: 10 } });
+    mockGenerate.mockResolvedValueOnce({ text: '<AUDIT_RESULT>APPROVED</AUDIT_RESULT>', usage: { input_tokens: 10, output_tokens: 10 } });
     const result = await auditPlan('test', '', ['skills']);
     expect(result.passed).toBe(true);
   });

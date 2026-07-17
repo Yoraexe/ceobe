@@ -35,7 +35,7 @@ export function getProjectDir(): string {
  * If running inside a Telegram Queue Context, it routes the log to the Telegram buffer.
  * Otherwise, it prints directly to standard output.
  */
-export function logContext(msg: string, bypassIntercept = false): void {
+function logContext(msg: string, bypassIntercept = false): void {
   const ctx = executionContext.getStore();
   if (ctx && ctx.logger && !bypassIntercept) {
     ctx.logger(msg);

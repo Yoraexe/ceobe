@@ -36,7 +36,7 @@ import {
   handleWorktreeCommand
 } from './handlers';
 
-function getAllowedIds(raw: string): Set<number> {
+export function getAllowedIds(raw: string): Set<number> {
   const ids = raw
     .split(',')
     .map((s) => parseInt(s.trim(), 10))
@@ -48,7 +48,7 @@ function truncate(str: string, max: number): string {
   return str.length > max ? str.substring(0, max) + '...\n\n[Dipotong oleh bot]' : str;
 }
 
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
@@ -73,7 +73,8 @@ export async function startTelegramDaemon(): Promise<void> {
   const queue = new MessageQueue();
 
   console.log(chalk.magenta.bold('\n🤖 [Ceobe Telegram Daemon] Starting...\n'));
-  console.log(chalk.dim(`  User yang diizinkan: ${[...allowedIds].join(', ')}`));
+  // Fix L-04: Obscure allowed user IDs in stdout to protect privacy
+  console.log(chalk.dim(`  User yang diizinkan: [${allowedIds.size} authorized users loaded]`));
   console.log(chalk.dim('  Mode: Long Polling (tekan Ctrl+C untuk berhenti)\n'));
 
   const bot = new TelegramBot(token, { polling: true });
@@ -157,13 +158,20 @@ export async function startTelegramDaemon(): Promise<void> {
       const logBuffer: string[] = [];
       let lastFlush = Date.now();
 
+      let isSendingLogs = false;
+
       const sendLogs = async () => {
-        if (logBuffer.length === 0) return;
-        const chunk = logBuffer.splice(0, logBuffer.length).join('\n');
+        if (logBuffer.length === 0 || isSendingLogs) return;
+        isSendingLogs = true;
+        const currentLogs = [...logBuffer];
+        const chunk = currentLogs.join('\n');
         try {
           await bot.sendMessage(chatId, `<pre><code>${escapeHtml(truncate(chunk, 3800))}</code></pre>`, { parse_mode: 'HTML' });
-        } catch {
-          // Ignore Telegram rate limit / message errors silently
+          logBuffer.splice(0, currentLogs.length);
+        } catch (err: any) {
+          console.error(`[TelegramDaemon] Failed to send logs: ${err.message}`);
+        } finally {
+          isSendingLogs = false;
         }
       };
 

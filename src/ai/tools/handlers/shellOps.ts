@@ -10,7 +10,11 @@ export const activeBackgroundProcesses = new Map<string, ChildProcess>();
 
 function detectProjectImage(): string {
   if (env.CEOBE_SANDBOX_IMAGE) {
-    return env.CEOBE_SANDBOX_IMAGE;
+    // Fix M-17: Sanitize Docker image name to prevent sandbox escape via env injection
+    if (/^[a-zA-Z0-9\-\.\/:]+$/.test(env.CEOBE_SANDBOX_IMAGE)) {
+      return env.CEOBE_SANDBOX_IMAGE;
+    }
+    console.warn(`[Sandbox] Invalid CEOBE_SANDBOX_IMAGE format. Using default image.`);
   }
   const workspace = getProjectDir();
   if (fs.existsSync(path.join(workspace, 'go.mod'))) return 'golang:1.24-alpine';
@@ -27,20 +31,32 @@ function wrapInSandbox(cmd: string): string {
   const escapedCmd = cmd.replace(/'/g, "'\"'\"'");
   // Prevent host shell injection from workspace path (e.g. $() or backticks)
   const escapedWorkspace = workspace.replace(/(["\\$`])/g, '\\$1');
-  return `docker run --rm -v "${escapedWorkspace}":/app -w /app ${image} sh -c '${escapedCmd}'`;
+  return `docker run --rm --mount type=bind,source="${escapedWorkspace}",target=/app -w /app ${image} sh -c '${escapedCmd}'`;
 }
 
 function isCommandAllowed(cmd: string): boolean {
-  if (cmd.includes('`') || cmd.includes('$(') || cmd.includes('<') || cmd.includes('>')) return false; // Block command substitution and redirections
-  const allowedPrefixes = ['npm ', 'npx ', 'tsc', 'git ', 'vitest', 'node ', 'dir', 'ls', 'bun ', 'go ', 'cargo ', 'docker ', 'python ', 'pip ', 'pnpm ', 'yarn ', 'pytest', 'flutter ', 'dart ', 'php ', 'composer ', 'artisan '];
-  
+  if (cmd.includes('`') || cmd.includes('$(') || cmd.includes('<') || cmd.includes('>') || cmd.includes('|')) return false; // Block command substitution, redirections, and pipes
+  if (cmd.includes('--exec') || cmd.includes('-exec') || cmd.includes('core.editor')) return false; // Block argument injections
+  if (/(?<!&)&(?!&)/.test(cmd)) return false; // Block background execution but allow &&
+
+  const allowedPrefixes = [
+    'npm ', 'npx ', 'tsc ', 'vitest', 'node ', 'dir', 'ls', 'bun ', 
+    'go ', 'cargo ', 'docker ', 'python ', 'pip ', 'pnpm ', 'yarn ', 
+    'pytest', 'flutter ', 'dart ', 'php ', 'composer ', 'artisan ',
+    'git status', 'git add ', 'git commit ', 'git push', 'git pull', 
+    'git log', 'git diff', 'git stash', 'git branch', 'git checkout ', 
+    'git rm ', 'git mv ', 'git clone ', 'git fetch', 'git reset '
+  ];
   // Explicitly block shell-escape patterns within whitelisted tools
   if (cmd.includes('npm exec') || cmd.includes('npx -c') || cmd.includes('node -e') || cmd.includes('node --eval') || cmd.includes('node --print')) return false;
 
   const segments = cmd.split(/(?:&&|\|\||;|\||\n|\r)/).map(s => s.trim()).filter(s => s.length > 0);
   
   for (const segment of segments) {
-     const segmentAllowed = allowedPrefixes.some(prefix => segment.startsWith(prefix));
+     const segmentAllowed = allowedPrefixes.some(prefix => {
+       const trimmed = prefix.trim();
+       return segment === trimmed || segment.startsWith(trimmed + ' ');
+     }); // Fix M-16: Prevent 'ls-evil' bypassing 'ls' whitelist
      if (!segmentAllowed) return false;
   }
   return true;

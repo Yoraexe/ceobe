@@ -29,7 +29,9 @@ export function saveEmbeddings(chunks: CodeChunk[]): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  fs.writeFileSync(filePath, JSON.stringify(chunks, null, 2), 'utf8');
+  const tempPath = filePath + '.tmp.' + Math.random().toString(36).substring(2);
+  fs.writeFileSync(tempPath, JSON.stringify(chunks, null, 2), 'utf8');
+  fs.renameSync(tempPath, filePath);
 }
 
 export function loadEmbeddings(): CodeChunk[] {
@@ -84,8 +86,8 @@ export function searchEmbeddings(queryVector: number[], topK: number = 5): Searc
 
   // Verifikasi jika dimensi embedding berubah (karena pergantian model provider)
   if (chunks[0].embedding.length > 0 && chunks[0].embedding.length !== queryVector.length) {
-    try { fs.unlinkSync(getEmbeddingsFilePath()); } catch (e) {}
-    throw new Error('Dimensi embedding tidak cocok (kemungkinan model provider berubah). Cache index telah dihapus. Harap jalankan "ceobe index" ulang.');
+    // Fix L-20: Prevent destructive unlinking. Just throw an error and let the user handle re-indexing if intended.
+    throw new Error('Dimensi embedding tidak cocok (kemungkinan model provider berubah). Harap jalankan "ceobe index" ulang untuk memperbarui database.');
   }
 
   const results: SearchResult[] = chunks.map(chunk => ({

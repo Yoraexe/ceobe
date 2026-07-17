@@ -46,7 +46,8 @@ export async function handleAddProjectCommand(bot: TelegramBot, chatId: number, 
       /^[a-zA-Z]:[\\/]*$/.test(absolutePath) || 
       /windows/i.test(absolutePath) || 
       /program files/i.test(absolutePath) || 
-      /^\/(etc|var|root|usr|bin|sbin|sys|proc|dev)(\/|$)/.test(absolutePath);
+      /^\/(etc|var|root|usr|bin|sbin|sys|proc|dev)(\/|$)/.test(absolutePath) ||
+      /\.(ssh|gnupg|aws|kube|docker|config)/i.test(absolutePath); // Fix M-01: Block sensitive hidden dirs
     
     if (isSystemDir) {
       await bot.sendMessage(chatId, `🚫 Path *${absolutePath}* ditolak karena merupakan direktori sistem.`, { parse_mode: 'Markdown' });

@@ -41,7 +41,12 @@ class GeminiEmbeddingAdapter implements IEmbeddingAdapter {
         content: { parts: [{ text }] },
       })
     ) as { embedding?: { values?: number[] } };
-    return response.embedding?.values || [];
+    const values = response.embedding?.values;
+    // Fix M-24: Throw error if embedding vector is empty to prevent NaN / division by zero downstream
+    if (!values || values.length === 0) {
+      throw new Error(`[EmbeddingAdapter] Empty embedding vector returned by Gemini API.`);
+    }
+    return values;
   }
 }
 
@@ -131,7 +136,8 @@ export function createEmbeddingAdapter(): IEmbeddingAdapter {
   const known = EMBEDDING_KNOWN_PROVIDERS[provider];
   if (!known) {
     const customBaseURL = process.env.CEOBE_EMBEDDING_BASE_URL;
-    const customKey = process.env.CEOBE_EMBEDDING_API_KEY || process.env[`${provider.toUpperCase()}_API_KEY`] || '';
+    // Fix L-11: Prevent dynamic env var injection by only using explicit keys
+    const customKey = process.env.CEOBE_EMBEDDING_API_KEY || '';
     const customModel = modelOverride || 'custom-embedding-model';
     if (!customBaseURL || !customKey) {
       throw new Error(

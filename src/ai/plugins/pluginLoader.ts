@@ -5,7 +5,7 @@ import { pathToFileURL } from 'url';
 import type { NormalizedTool } from '../providers/types';
 import chalk from 'chalk';
 
-export interface PluginDefinition {
+interface PluginDefinition {
   name: string;
   description: string;
   input_schema: {
@@ -17,7 +17,7 @@ export interface PluginDefinition {
 }
 
 // Global registry for loaded plugins
-export const loadedPlugins = new Map<string, PluginDefinition>();
+const loadedPlugins = new Map<string, PluginDefinition>();
 
 export function clearLoadedPlugins() {
   loadedPlugins.clear();
@@ -51,7 +51,7 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
   }
 
   const tools: NormalizedTool[] = [];
-  const { confirmToolCall, getActiveMode } = await import('../../utils/modeManager');
+  const { confirmToolCall } = await import('../../utils/modeManager');
 
   for (const file of pluginFiles) {
     try {
@@ -66,13 +66,11 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
 
       const fileUrl = pathToFileURL(realPath).href;
       
-      if (getActiveMode() === 'ask') {
-         log(chalk.yellow(`[PluginLoader] ⚠️ Keamanan: Meminta izin untuk memuat plugin eksternal '${file}'...`));
-         const approved = await confirmToolCall('load_plugin', { file, path: realPath });
-         if (!approved) {
-           log(chalk.red(`[PluginLoader] ❌ Ditolak oleh pengguna. Plugin '${file}' tidak dimuat.`));
-           continue;
-         }
+      log(chalk.yellow(`[PluginLoader] ⚠️ Keamanan: Meminta izin untuk memuat plugin eksternal '${file}'...`));
+      const approved = await confirmToolCall('load_plugin', { file, path: realPath });
+      if (!approved) {
+        log(chalk.red(`[PluginLoader] ❌ Ditolak oleh pengguna. Plugin '${file}' tidak dimuat.`));
+        continue;
       }
       
       // Dynamic import

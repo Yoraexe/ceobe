@@ -3,6 +3,11 @@ import * as path from 'path';
 import { env } from '../config/env';
 import chalk from 'chalk';
 import { log } from './context';
+import {
+  getAvailablePentestSkillNames,
+  loadPentestSkillsContent,
+  discoverPentestSkills,
+} from '../ai/pentest/pentestSkillBridge';
 
 /**
  * Reads all .md files from a given directory and returns their concatenated content.
@@ -71,7 +76,8 @@ export function readSpecificSkills(skillNames: string[]): string {
   const skillsDir = path.join(env.CEOBE_INSTALL_DIR, 'skills');
   
   for (const name of skillNames) {
-    const specificSkillDir = path.join(skillsDir, name);
+    const specificSkillDir = path.resolve(path.join(skillsDir, name));
+    if (!specificSkillDir.startsWith(path.resolve(skillsDir))) continue; // Fix H-12: Prevent Path Traversal
     if (fs.existsSync(specificSkillDir)) {
       content += `\n--- SKILL RELEVANT: ${name.toUpperCase()} ---\n`;
       content += readAllFromDir(specificSkillDir);
@@ -80,12 +86,42 @@ export function readSpecificSkills(skillNames: string[]): string {
   return content;
 }
 
+// ── Pentest Skill Accessors ───────────────────────────────────────────────────
+
+/**
+ * Returns all pentest skill names available in the skills/ directory.
+ * These are skills with prefixes: pentest-, vuln-, recon-, payload-, etc.
+ */
+export function getPentestSkillNames(): string[] {
+  return getAvailablePentestSkillNames();
+}
+
+/**
+ * Reads the content of selected pentest skills (SKILL.md files).
+ * Supports YAML-frontmatter format (Eunectes) and plain format (legacy Ceobe).
+ */
+export function readPentestSkillsContent(skillNames: string[]): string {
+  return loadPentestSkillsContent(skillNames);
+}
+
+/**
+ * Returns metadata for all available pentest skills.
+ */
+export function getPentestSkillsMeta() {
+  return discoverPentestSkills();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Reads a specific template file from the templates directory.
  */
 export function readTemplate(templateName: string): string {
   try {
-    const templatePath = path.join(env.CEOBE_INSTALL_DIR, 'templates', templateName);
+    const templatesDir = path.resolve(path.join(env.CEOBE_INSTALL_DIR, 'templates'));
+    const templatePath = path.resolve(path.join(templatesDir, templateName));
+    if (!templatePath.startsWith(templatesDir)) return ''; // Fix H-12: Prevent Path Traversal
+    
     if (fs.existsSync(templatePath)) {
       return fs.readFileSync(templatePath, 'utf-8');
     }

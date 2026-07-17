@@ -18,6 +18,8 @@ import { handleSearchCodebase, handleGrepCodebase } from './handlers/semanticOps
 // Export for backward compatibility (e.g. tests checking active processes)
 export { activeBackgroundProcesses };
 
+let cachedToolValidator: any = null;
+
 export const tools = [
   {
     name: 'read_file',
@@ -85,15 +87,16 @@ export const tools = [
   },
   {
     name: 'edit_file',
-    description: 'Edits an existing file by replacing a specific string with new content. Use this to safely patch files without overwriting them completely.',
+    description: 'Edits an existing file by replacing a block of lines with new content. Use this to safely patch files.',
     input_schema: {
       type: 'object',
       properties: {
         file_path: { type: 'string', description: 'The absolute or relative path to the file to edit.' },
-        target_content: { type: 'string', description: 'The exact string in the file to replace. Must match exactly, including whitespace.' },
-        replacement_content: { type: 'string', description: 'The new content to replace the target_content with.' }
+        start_line: { type: 'number', description: 'The starting line number of the block to replace (1-indexed).' },
+        end_line: { type: 'number', description: 'The ending line number of the block to replace (1-indexed, inclusive).' },
+        replacement_content: { type: 'string', description: 'The new content to replace the specified block with.' }
       },
-      required: ['file_path', 'target_content', 'replacement_content']
+      required: ['file_path', 'start_line', 'end_line', 'replacement_content']
     }
   },
   {
@@ -255,10 +258,17 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
         break;
     }
   } catch (error: unknown) {
-    rawResult = `Error executing ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes('ENOSPC') || errorMsg.includes('ENOMEM') || errorMsg.includes('EPERM')) {
+      throw error; // Fix H-19: Fatal system errors should abort and trigger recovery
+    }
+    rawResult = `Error executing ${toolName}: ${errorMsg}`;
   }
   
-  const { validateToolResult } = await import('./toolValidator');
-  const validation = await validateToolResult(toolName, input, rawResult);
+  // Fix L-15: Cache dynamic imports to prevent Node.js module resolution overhead on every single tool call
+  if (!cachedToolValidator) {
+    cachedToolValidator = await import('./toolValidator');
+  }
+  const validation = await cachedToolValidator.validateToolResult(toolName, input, rawResult);
   return validation.enhancedResult;
 }

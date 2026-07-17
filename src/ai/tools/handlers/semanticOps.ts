@@ -1,11 +1,11 @@
 import { getEmbedding } from '../../memory/indexer';
 import { searchEmbeddings } from '../../memory/vectorStore';
 import { searchFullText, loadFullTextIndex } from '../../memory/fullTextSearch';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getProjectDir } from '../../../utils/context';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 
 export async function handleSearchCodebase(input: Record<string, any>): Promise<string> {
@@ -74,21 +74,23 @@ export async function handleGrepCodebase(input: Record<string, any>): Promise<st
   
   try {
     const cwd = getProjectDir();
-    let cmd = `grep -rnI ${isRegex ? '-E' : '-F'} "${query.replace(/"/g, '\\"')}" .`;
+    const args = ['-rnI', isRegex ? '-E' : '-F'];
     
     const ignoredDirs = ['node_modules', '.git', 'dist', 'build', 'coverage', '.ceobe'];
     for (const dir of ignoredDirs) {
-      cmd += ` --exclude-dir="${dir}"`;
+      args.push(`--exclude-dir=${dir}`);
     }
     
     if (includes && includes.length > 0) {
       includes.forEach(inc => {
-        cmd += ` --include="${inc}"`;
+        args.push(`--include=${inc}`);
       });
     }
 
+    args.push(query, '.');
+
     try {
-      const { stdout } = await execAsync(cmd, { cwd });
+      const { stdout } = await execFileAsync('grep', args, { cwd });
       const lines = stdout.split('\n').filter(l => l.trim().length > 0);
       if (lines.length > 50) {
         return lines.slice(0, 50).join('\n') + `\n\n... (and ${lines.length - 50} more matches. Refine your search.)`;

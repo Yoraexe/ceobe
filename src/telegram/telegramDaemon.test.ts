@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { startTelegramDaemon } from './telegramDaemon';
+import { startTelegramDaemon, getAllowedIds, escapeHtml } from './telegramDaemon';
 
 vi.mock('node-telegram-bot-api', () => {
   return {
@@ -14,8 +14,10 @@ vi.mock('node-telegram-bot-api', () => {
   };
 });
 
+let mockKeys = { TELEGRAM_BOT_TOKEN: 'mock-token', TELEGRAM_ALLOWED_USERS: '12345,67890' };
 vi.mock('../utils/keyManager', () => ({
-  readAllKeys: vi.fn().mockReturnValue({ TELEGRAM_BOT_TOKEN: 'mock-token', TELEGRAM_ALLOWED_USERS: 'user1,user2' }),
+  readAllKeys: vi.fn().mockImplementation(() => mockKeys),
+  getKey: vi.fn().mockImplementation((k) => mockKeys[k as keyof typeof mockKeys] || ''),
 }));
 
 describe('telegramDaemon', () => {
@@ -23,11 +25,26 @@ describe('telegramDaemon', () => {
     vi.clearAllMocks();
   });
 
+  describe('getAllowedIds', () => {
+    it('should return Set of allowed IDs', () => {
+      const ids = getAllowedIds('12345, 67890');
+      expect(ids.has(12345)).toBe(true);
+      expect(ids.has(67890)).toBe(true);
+      expect(ids.has(99999)).toBe(false);
+    });
+  });
+
+  describe('escapeHtml', () => {
+    it('should escape HTML tags to prevent XSS in Telegram', () => {
+      const input = '<script>alert("xss")</script> & "test"';
+      const output = escapeHtml(input);
+      expect(output).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; &quot;test&quot;');
+    });
+  });
+
   it('should start telegram daemon if token is provided', () => {
-    // Tests that daemon initialization function can run without throwing errors
     expect(() => {
       startTelegramDaemon();
-      // the actual implementation just starts the polling bot
     }).not.toThrow();
   });
 });

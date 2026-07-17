@@ -11,6 +11,12 @@ import { activeBackgroundProcesses } from '../tools/systemTools';
 const execAsync = promisify(exec);
 
 export async function askUserConfirmation(question: string): Promise<boolean> {
+  // Fix M-31: Prevent infinite hang in non-interactive CI/CD environments
+  if (process.env.CI || !process.stdin.isTTY) {
+    console.log(chalk.yellow(`\n[Auto-Abort] CI/CD environment detected. Automatically rejecting: ${question}`));
+    return false;
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -96,7 +102,11 @@ export async function runPolyglotVerification(projectDir: string): Promise<void>
         log(chalk.gray(`Running: composer validate`));
         await execAsync('composer validate --no-check-all', { cwd: projectDir, timeout: 120000 });
      } catch (error: unknown) {
-        // Ignore if composer not installed globally
+        // Fix H-20: Only ignore if composer is missing, don't swallow validation errors
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!msg.includes('not recognized') && !msg.includes('not found')) {
+           throw error; 
+        }
      }
      
      if (fs.existsSync(path.join(projectDir, 'artisan'))) {

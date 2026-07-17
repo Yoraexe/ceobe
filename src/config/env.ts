@@ -103,9 +103,9 @@ export function loadEnv(): EnvConfig {
     OPENAI_API_KEY: getOptional('OPENAI_API_KEY'),
     CEOBE_INSTALL_DIR: getOptional('CEOBE_INSTALL_DIR') || path.resolve(__dirname, '../../'),
     TARGET_PROJECT_DIR: process.cwd(),
-    CEOBE_SANDBOX: (['docker', 'none'].includes(process.env.CEOBE_SANDBOX as string) ? process.env.CEOBE_SANDBOX : 'none') as 'docker' | 'none',
+    CEOBE_SANDBOX: (['docker', 'none'].includes(process.env.CEOBE_SANDBOX as string) ? process.env.CEOBE_SANDBOX : 'docker') as 'docker' | 'none', // Fix M-03: Secure default
     CEOBE_SANDBOX_IMAGE: getOptional('CEOBE_SANDBOX_IMAGE') || '',
-    CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 0,
+    CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 5, // Fix M-04: Secure default limit
     CEOBE_MAX_TOKENS: parseInt(getOptional('CEOBE_MAX_TOKENS'), 10) || 16384,
   };
 

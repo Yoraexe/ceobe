@@ -44,7 +44,8 @@ export async function selectRelevantSkills(taskDescription: string | NormalizedC
     }
 
     const selected = output.split(',').map(s => s.trim().toLowerCase());
-    const matchedSkills = availableSkills.filter(as => selected.some(s => as.toLowerCase() === s || as.toLowerCase().includes(s) || s.includes(as.toLowerCase())));
+    // Fix M-38: Use strict equality to prevent unintended skills from being loaded due to loose substring matching
+    const matchedSkills = availableSkills.filter(as => selected.some(s => as.toLowerCase() === s));
     spinner.succeed(chalk.green(`${tag} Skills selected: ${matchedSkills.join(', ')}`));
     return matchedSkills;
   } catch (error: unknown) {

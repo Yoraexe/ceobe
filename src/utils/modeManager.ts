@@ -116,12 +116,12 @@ export function readConfig(): CeobeConfig {
   let loadedConfig: CeobeConfig;
   
   if (!fs.existsSync(configPath)) {
-    loadedConfig = { mode: 'autonomous', worktree: false, updatedAt: new Date().toISOString() };
+    loadedConfig = { mode: 'ask', worktree: false, updatedAt: new Date().toISOString() }; // Fix M-08: Secure default mode
   } else {
     try {
       loadedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
     } catch {
-      loadedConfig = { mode: 'autonomous', worktree: false, updatedAt: new Date().toISOString() };
+      loadedConfig = { mode: 'ask', worktree: false, updatedAt: new Date().toISOString() }; // Fix M-08: Secure default mode
     }
   }
   
@@ -137,7 +137,8 @@ export function writeConfig(config: CeobeConfig): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   
   const tmpPath = `${configPath}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
+  // Fix L-02: Ensure config file has restrictive permissions (read/write only by owner)
+  fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
   fs.renameSync(tmpPath, configPath);
   
   const ctx = executionContext.getStore();

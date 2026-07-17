@@ -38,8 +38,8 @@ describe('browserAutomation', () => {
   });
 
   it('should capture screenshot for URL', async () => {
-    const result = await captureScreenshot('http://localhost:3000');
-    expect(mocks.page.goto).toHaveBeenCalledWith('http://localhost:3000', expect.any(Object));
+    const result = await captureScreenshot('http://example.com');
+    expect(mocks.page.goto).toHaveBeenCalledWith('http://example.com', expect.any(Object));
     expect(mocks.page.screenshot).toHaveBeenCalled();
     expect(mocks.browser.close).toHaveBeenCalled();
     expect(result.mediaType).toBe('image/png');

@@ -6,7 +6,7 @@ import { markFileComplete } from '../../../utils/stateManager';
 // Write Lock Map — prevents concurrent writes to the same file
 const writeLocks = new Map<string, Promise<void>>();
 
-export async function acquireLock(filePath: string): Promise<() => void> {
+async function acquireLock(filePath: string): Promise<() => void> {
   const normPath = path.resolve(filePath);
   const prev = writeLocks.get(normPath) ?? Promise.resolve();
   let release = () => {};
@@ -81,43 +81,23 @@ export async function handleEditFile(input: Record<string, any>): Promise<string
   
   const releaseLock = await acquireLock(fullPath);
   try {
-    let content = fs.readFileSync(fullPath, 'utf8');
-    const target = String(input.target_content);
+    const content = fs.readFileSync(fullPath, 'utf8');
+    const startLine = Number(input.start_line);
+    const endLine = Number(input.end_line);
     const replacement = String(input.replacement_content);
     
-    if (!content.includes(target)) {
-      try {
-        if (target.length > 5000) {
-          throw new Error('Target too large for regex fallback');
-        }
-        const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regexTarget = escapedTarget.replace(/\s+/g, '\\s+');
-        const regexGlobal = new RegExp(regexTarget, 'g');
-        const matches = content.match(regexGlobal);
-        
-        if (matches) {
-          if (matches.length > 1) {
-            return `Error: target_content (with whitespace normalization) matches ${matches.length} times. Please provide a more unique target_content.`;
-          }
-          const regex = new RegExp(regexTarget);
-          content = content.replace(regex, replacement);
-          fs.writeFileSync(fullPath, content, 'utf8');
-          await markFileComplete(input.file_path);
-          return `Successfully edited ${fullPath} (using whitespace-normalized fallback)`;
-        }
-      } catch(e) { }
-      
-      return `Error: target_content not found in the file. Exact match and whitespace fallback failed.\nEnsure that the text you provided matches the file content.\nHint: use read_file to check the exact lines you want to replace.`;
-    }
-    const occurrences = content.split(target).length - 1;
-    if (occurrences > 1) {
-      return `Error: target_content occurs ${occurrences} times in the file. Please provide a more unique target_content block to ensure the correct code is edited.`;
+    const lines = content.split('\n');
+    if (isNaN(startLine) || isNaN(endLine) || startLine < 1 || startLine > endLine || startLine > lines.length) {
+      return `Error: Invalid start_line or end_line. File has ${lines.length} lines.`;
     }
     
-    content = content.replace(target, replacement);
-    fs.writeFileSync(fullPath, content, 'utf8');
+    const before = lines.slice(0, startLine - 1);
+    const after = lines.slice(endLine);
+    
+    const newContent = [...before, replacement, ...after].join('\n');
+    fs.writeFileSync(fullPath, newContent, 'utf8');
     await markFileComplete(input.file_path);
-    return `Successfully edited ${fullPath}`;
+    return `Successfully edited ${fullPath} from line ${startLine} to ${endLine}`;
   } finally {
     releaseLock();
   }
@@ -209,6 +189,7 @@ export async function handleDeleteFile(input: Record<string, any>): Promise<stri
   if (!fs.existsSync(fullPath)) {
     return `Error: File not found at ${fullPath}`;
   }
-  fs.unlinkSync(fullPath);
+  // Fix L-17: Support directory deletion by using rmSync instead of unlinkSync
+  fs.rmSync(fullPath, { recursive: true, force: true });
   return `Successfully deleted ${fullPath}`;
 }

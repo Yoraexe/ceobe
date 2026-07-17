@@ -20,8 +20,8 @@ export interface NormalizedContentBlock {
   input?: Record<string, unknown>;
   tool_use_id?: string;
   text?: string;
-  content?: string | any[];
-  cache_control?: boolean;
+  content?: string | NormalizedContentBlock[];
+  cache_control?: { type: 'ephemeral' };
   // For multimodal
   source?: {
     type: 'base64';
@@ -36,7 +36,7 @@ export interface NormalizedContentBlock {
  */
 export interface NormalizedTool {
   name: string;
-  description: string;
+  description?: string;
   input_schema: {
     type: 'object';
     properties: Record<string, any>; // JSON Schema properties
@@ -49,7 +49,7 @@ export interface NormalizedTool {
  */
 export interface NormalizedResponse {
   content: NormalizedContentBlock[];
-  stop_reason: 'tool_use' | 'end_turn' | 'max_tokens' | string;
+  stop_reason: 'tool_use' | 'end_turn' | 'max_tokens' | 'error';
   usage?: { input_tokens?: number; output_tokens?: number };
 }
 

@@ -14,6 +14,10 @@ import { registerSkillCommand } from './system/skillCmd';
 import { registerReflectCommand } from './system/reflectCmd';
 import { registerReconCommand } from './system/reconCmd';
 import { registerTemplateCommand } from './system/templateCmd';
+import { registerBenchmarkCommand } from './system/benchmarkCmd';
+import { registerDebtCommand } from './system/debtCmd';
+import { registerMcpCommand } from './system/mcpCmd';
+import { registerTrimCommand } from './system/trimCmd';
 
 export function registerSystemCommands(program: Command): void {
   registerIndexCommand(program);
@@ -31,4 +35,8 @@ export function registerSystemCommands(program: Command): void {
   registerReflectCommand(program);
   registerReconCommand(program);
   registerTemplateCommand(program);
+  registerBenchmarkCommand(program);
+  registerDebtCommand(program);
+  registerMcpCommand(program);
+  registerTrimCommand(program);
 }

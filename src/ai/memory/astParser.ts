@@ -41,12 +41,19 @@ export function isTypeScriptFile(filePath: string): boolean {
  * @param filePath     Relative path (used as a label in the output).
  * @returns A compact markdown-style summary string.
  */
+// Singleton project instance to avoid OOM crashes on large codebases
+const sharedProject = new Project({ useInMemoryFileSystem: true });
+
 export function extractTypeScriptSignatures(fileContent: string, filePath: string): string {
-  const project = new Project({ useInMemoryFileSystem: true });
+  // Fix L-19: Guard against massive files to prevent AST parser hanging
+  if (fileContent.length > 1_000_000) {
+    return fileContent; // Return raw if > 1MB
+  }
+
   let sourceFile: SourceFile;
 
   try {
-    sourceFile = project.createSourceFile(filePath, fileContent, { overwrite: true });
+    sourceFile = sharedProject.createSourceFile(filePath, fileContent, { overwrite: true });
   } catch {
     // If ts-morph fails to parse (e.g., syntax error in target file), fall back to raw content
     return fileContent;
@@ -165,6 +172,11 @@ export function extractTypeScriptSignatures(fileContent: string, filePath: strin
       lines.push('}');
       sections.push(lines.join('\n'));
     });
+  }
+
+  // Fix M-35: Prevent OOM by explicitly removing the AST from the singleton project
+  if (sourceFile) {
+    sharedProject.removeSourceFile(sourceFile);
   }
 
   return sections.join('\n\n');

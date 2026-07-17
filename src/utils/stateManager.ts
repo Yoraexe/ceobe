@@ -22,11 +22,23 @@ export interface CeobeState {
   lastSnapshotHash?: string;
   /** If true, the ponytail lazy ladder rules are disabled. */
   isCreativeMode?: boolean;
+  /** Pentest session state — populated when running `ceobe pentest` or `ceobe fullscan`. */
+  pentest?: {
+    target: string;
+    mode: string;
+    phase: 'scope' | 'plan' | 'audit' | 'execute' | 'report' | 'done';
+    outputDir: string;
+    scopePath: string;
+    planPath: string;
+    reportPath: string;
+    startedAt: string;
+    completedAt?: string;
+  };
 }
 
 let globalCachedState: CeobeState | null = null;
 
-export function getStateFilePath(): string {
+function getStateFilePath(): string {
   return path.join(getProjectDir(), '.ceobe', 'ceobe-state.json');
 }
 
@@ -44,8 +56,20 @@ export async function readState(): Promise<CeobeState | null> {
   const cached = ctx ? ctx.stateCache : globalCachedState;
   if (cached) return cached;
   
+  const statePath = getStateFilePath();
+  let release: (() => Promise<void>) | undefined;
+  
   try {
-    const data = await fs.promises.readFile(getStateFilePath(), 'utf8');
+    release = await lockfile.lock(statePath, { 
+      retries: { retries: 5, minTimeout: 50, maxTimeout: 500 },
+      stale: 10000 
+    });
+  } catch (err) {
+    throw new Error(`[StateManager] Failed to acquire lock for state file. Aborting to prevent race condition. ${String(err)}`); // Fix M-05
+  }
+
+  try {
+    const data = await fs.promises.readFile(statePath, 'utf8');
     const parsed = JSON.parse(data);
     if (ctx) ctx.stateCache = parsed;
     else globalCachedState = parsed;
@@ -55,6 +79,8 @@ export async function readState(): Promise<CeobeState | null> {
       log(chalk.yellow(`Failed to read .ceobe/ceobe-state.json: ${err.message}`));
     }
     return null;
+  } finally {
+    if (release) await release();
   }
 }
 
@@ -171,4 +197,35 @@ export async function markSelfHeal(): Promise<number> {
 
 export async function saveSnapshotHash(hash: string): Promise<void> {
   await writeState({ lastSnapshotHash: hash });
+}
+
+/**
+ * Save or update pentest session state.
+ */
+export async function writePentestState(
+  pentestState: Partial<NonNullable<CeobeState['pentest']>>
+): Promise<void> {
+  await writeState((currentState) => ({
+    pentest: {
+      ...(currentState.pentest ?? {
+        target: '',
+        mode: 'auto',
+        phase: 'scope',
+        outputDir: '',
+        scopePath: '',
+        planPath: '',
+        reportPath: '',
+        startedAt: new Date().toISOString(),
+      }),
+      ...pentestState,
+    },
+  }));
+}
+
+/**
+ * Read pentest session state.
+ */
+export async function readPentestState(): Promise<CeobeState['pentest'] | null> {
+  const state = await readState();
+  return state?.pentest ?? null;
 }

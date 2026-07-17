@@ -16,7 +16,7 @@ export interface SearchResult {
   score: number;
 }
 
-export function getFullTextIndexFilePath(): string {
+function getFullTextIndexFilePath(): string {
   return path.join(getProjectDir(), '.ceobe', 'fulltext-index.json');
 }
 
@@ -28,7 +28,9 @@ export function saveFullTextIndex(index: FullTextIndex): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  fs.writeFileSync(filePath, JSON.stringify(index), 'utf8');
+  const tempPath = filePath + '.tmp.' + Math.random().toString(36).substring(2);
+  fs.writeFileSync(tempPath, JSON.stringify(index), 'utf8');
+  fs.renameSync(tempPath, filePath);
 }
 
 export function loadFullTextIndex(): FullTextIndex {
@@ -46,7 +48,7 @@ export function loadFullTextIndex(): FullTextIndex {
   }
 }
 
-export function tokenize(text: string): string[] {
+function tokenize(text: string): string[] {
   // Split by non-alphanumeric, keep parts. Convert to lowercase.
   return text.split(/[^a-zA-Z0-9_]+/)
     .map(t => t.toLowerCase())
@@ -89,6 +91,7 @@ export function searchFullText(query: string, index: FullTextIndex, topK: number
   // Simple TF-like scoring: 
   for (const qToken of queryTokens) {
     for (const token in index) {
+      if (qToken.length < 3 && token !== qToken) continue; // Fix H-16: Prevent DoS from short substring queries
       if (token.includes(qToken)) { // exact or substring
         for (const entry of index[token]) {
           const key = `${entry.filePath}:${entry.line}`;

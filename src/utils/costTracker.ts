@@ -44,7 +44,7 @@ const PRICING: Record<string, { input: number; output: number }> = {
   'qwen-3-max': { input: 0.30, output: 0.90 }
 };
 
-export function getPricing(): Record<string, { input: number; output: number }> {
+function getPricing(): Record<string, { input: number; output: number }> {
   if (process.env.CEOBE_PRICING_OVERRIDE) {
     try {
       return { ...PRICING, ...JSON.parse(process.env.CEOBE_PRICING_OVERRIDE) };
@@ -74,6 +74,11 @@ export function resetSession(): void {
 export function recordUsage(usage: TokenUsage): void {
   if (Number.isNaN(usage.inputTokens) || typeof usage.inputTokens !== 'number') usage.inputTokens = 0;
   if (Number.isNaN(usage.outputTokens) || typeof usage.outputTokens !== 'number') usage.outputTokens = 0;
+  
+  // Fix L-13: Guard against negative token counts
+  usage.inputTokens = Math.max(0, usage.inputTokens);
+  usage.outputTokens = Math.max(0, usage.outputTokens);
+  
   getSessionUsageArray().push(usage);
 }
 
@@ -85,12 +90,17 @@ export function getSessionCost(): number {
     const pricingMap = getPricing();
     const modelKey = Object.keys(pricingMap)
       .sort((a, b) => b.length - a.length)
-      .find(k => usage.model.toLowerCase().includes(k));
+      // Fix M-29: Use strict prefix matching instead of fuzzy includes to prevent model misattribution
+      .find(k => usage.model.toLowerCase().startsWith(k));
     const rates = modelKey ? pricingMap[modelKey] : { input: 0, output: 0 };
     
     const inputCost = (usage.inputTokens / 1_000_000) * rates.input;
     const outputCost = (usage.outputTokens / 1_000_000) * rates.output;
-    totalCost += inputCost + outputCost;
+    
+    // Fix M-30: Prevent NaN/Infinity poisoning of the total cost
+    if (Number.isFinite(inputCost) && Number.isFinite(outputCost)) {
+      totalCost += inputCost + outputCost;
+    }
   }
   return totalCost;
 }

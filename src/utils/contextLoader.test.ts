@@ -1,24 +1,45 @@
-import { describe, it, expect } from 'vitest';
-import { readCeobeRules, getAvailableSkills, readTemplate, readSpecificSkills } from './contextLoader';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readCeobeRules, getAvailableSkills, readTemplate, readSpecificSkills, loadAdditionalContexts } from './contextLoader';
+import * as fs from 'fs';
+import * as path from 'path';
+
+vi.mock('fs');
+vi.mock('./context', () => ({
+  getProjectDir: () => '/mock/dir',
+}));
 
 describe('contextLoader', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('should get available skills without throwing', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue(['skill1.md', 'skill2.md'] as unknown as fs.Dirent[]);
+    vi.mocked(fs.readFileSync).mockReturnValue('# Skill Title');
+    
     const skills = getAvailableSkills();
     expect(Array.isArray(skills)).toBe(true);
   });
 
   it('should read Ceobe rules without throwing', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('rules');
+    
     const rules = readCeobeRules();
-    expect(typeof rules).toBe('string');
+    expect(rules).toContain('rules');
   });
 
-  it('should read template without throwing', () => {
-    const tmpl = readTemplate('brd-template.md');
-    expect(typeof tmpl).toBe('string');
-  });
+  describe('Path Traversal Prevention (H-12)', () => {
+    it('should block path traversal outside skills directory in readSpecificSkills', () => {
+      // It should just ignore the invalid skill path and return empty
+      const res = readSpecificSkills(['../../../etc/shadow']);
+      expect(res).toBe('');
+    });
 
-  it('should read specific skills without throwing', () => {
-    const tmpl = readSpecificSkills(['react-nextjs']);
-    expect(typeof tmpl).toBe('string');
+    it('should block path traversal outside templates directory in readTemplate', () => {
+      const res = readTemplate('../../../etc/shadow');
+      expect(res).toBe('');
+    });
   });
 });

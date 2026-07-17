@@ -41,7 +41,8 @@ export async function checkRules(changedFiles: string[]): Promise<RuleViolation[
   for (const sourceFile of project.getSourceFiles()) {
     const filePath = sourceFile.getFilePath();
     const relPath = path.relative(projectDir, filePath).replace(/\\/g, '/');
-    const isController = relPath.toLowerCase().includes('controller') || relPath.toLowerCase().includes('handler') || relPath.toLowerCase().includes('api');
+    // Fix L-14: Narrow the isController heuristic to prevent false positives on files that just have "api" in their name
+    const isController = relPath.toLowerCase().includes('/controllers/') || relPath.toLowerCase().includes('/handlers/') || relPath.toLowerCase().includes('/api/');
     
     // Rule #14: Mandatory File Header
     const firstStmt = sourceFile.getStatements()[0];

@@ -11,7 +11,7 @@ export interface ProjectSession {
 const SESSION_FILE = path.join(os.homedir(), '.ceobe', 'sessions.json');
 export const sessionStore = new Map<number, ProjectSession>();
 
-export function loadSessions(): void {
+function loadSessions(): void {
   try {
     if (fs.existsSync(SESSION_FILE)) {
       const data = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
@@ -27,12 +27,14 @@ export function loadSessions(): void {
   }
 }
 
-export function saveSessions(): void {
+function saveSessions(): void {
   try {
     const dir = path.dirname(SESSION_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const data = Object.fromEntries(sessionStore.entries());
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const tempPath = SESSION_FILE + '.tmp.' + Math.random().toString(36).substring(2);
+    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tempPath, SESSION_FILE);
   } catch {
     // Ignore save errors
   }

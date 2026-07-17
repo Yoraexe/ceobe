@@ -11,13 +11,20 @@ export function readAllKeys(): Record<string, string> {
   const filePath = getKeysStorePath();
   if (!fs.existsSync(filePath)) return {};
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, string>;
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    // Fix L-01: Runtime schema validation to prevent non-string injection from keys.json
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    const validKeys: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'string') validKeys[k] = v;
+    }
+    return validKeys;
   } catch {
     return {};
   }
 }
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 export function writeAllKeys(keys: Record<string, string>): void {
   const filePath = getKeysStorePath();
@@ -27,7 +34,7 @@ export function writeAllKeys(keys: Record<string, string>): void {
   
   if (os.platform() === 'win32') {
     try {
-      execSync(`icacls "${filePath}" /inheritance:r /grant:r "%USERNAME%:F"`, { stdio: 'ignore' });
+      execFileSync('icacls', [filePath, '/inheritance:r', '/grant:r', `${process.env.USERNAME}:F`], { stdio: 'ignore' });
     } catch {
       // Silently ignore if icacls fails
     }

@@ -42,10 +42,20 @@ vi.mock('../utils/contextLoader', () => ({
 }));
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
-  exec: vi.fn((_cmd, _opts, cb) => cb(null, { stdout: 'mock stdout', stderr: '' }))
+  exec: vi.fn((_cmd, _opts, cb) => cb(null, { stdout: 'mock stdout', stderr: '' })),
+  execFile: vi.fn((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: '' }))
 }));
 
-// Mock readline
+// Mock loopHandlers
+export const mockAskUserConfirmation = vi.fn();
+vi.mock('./utils/loopHandlers', () => ({
+  askUserConfirmation: (...args: any[]) => mockAskUserConfirmation(...args),
+  handleSessionResume: vi.fn().mockResolvedValue('plan'),
+  cleanupBackgroundProcesses: vi.fn(),
+  runPolyglotVerification: vi.fn()
+}));
+
+// Mock readline (can be kept for legacy, though not strictly needed if askUserConfirmation is mocked)
 const mockClose = vi.fn();
 const mockQuestion = vi.fn();
 vi.mock('readline', () => ({
@@ -118,10 +128,10 @@ describe('supervisor', () => {
     // Always fail
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: false, feedback: 'bad' });
     
-    await runAutonomousLoop('test desc');
+    await expect(runAutonomousLoop('test desc')).rejects.toThrow('Maximum auto-correction retries (3) reached. Audit still failing.');
     
-    // 1 initial try + 3 retries = 4 times
-    expect(planner.generateBRD).toHaveBeenCalledTimes(4);
+    // 1 initial try + 2 retries (0, 1, 2 = 3 times total)
+    expect(planner.generateBRD).toHaveBeenCalledTimes(3);
     expect(executor.executeWaves).not.toHaveBeenCalled();
   });
 
@@ -134,11 +144,11 @@ describe('supervisor', () => {
     vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
-    mockQuestion.mockImplementation((_q, cb) => cb('y'));
+    mockAskUserConfirmation.mockResolvedValue(true);
     
     await runAutonomousLoop('test desc', true);
     
-    expect(mockQuestion).toHaveBeenCalled();
+    expect(mockAskUserConfirmation).toHaveBeenCalled();
     expect(executor.executeWaves).toHaveBeenCalledTimes(1);
   });
 
@@ -151,11 +161,11 @@ describe('supervisor', () => {
     vi.spyOn(planner, 'generateDevOpsConfig').mockImplementation(async () => `devops${++c}`);
     vi.spyOn(planner, 'auditPlan').mockResolvedValue({ passed: true });
     
-    mockQuestion.mockImplementation((_q, cb) => cb('n'));
+    mockAskUserConfirmation.mockResolvedValue(false);
     
     await runAutonomousLoop('test desc', true);
     
-    expect(mockQuestion).toHaveBeenCalled();
+    expect(mockAskUserConfirmation).toHaveBeenCalled();
     expect(executor.executePlan).not.toHaveBeenCalled();
   });
 });

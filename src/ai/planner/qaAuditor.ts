@@ -52,9 +52,11 @@ Your Job:
 2. Verify if the Task List executes everything required by the Architecture and Design.
 3. Verify if anything in the plans violates the Ceobe Engineering Rules or Skills constraints.
 
-If the plans are 100% solid, reply ONLY with the word: "APPROVED".
-If there are critical conflicts or missing steps, reply with a markdown list of mandatory changes. Do NOT say "APPROVED" if there are issues.
-At the very end of your response, you MUST include a JSON block indicating which artifacts need to be regenerated based on your findings:
+If everything is perfect and execution can proceed safely:
+Reply EXACTLY with:
+<AUDIT_RESULT>APPROVED</AUDIT_RESULT>
+
+If there are any problems, reply with a detailed critique and provide a JSON map of which phases need to be regenerated: based on your findings:
 \`\`\`json
 {
   "brd": boolean,
@@ -76,7 +78,8 @@ At the very end of your response, you MUST include a JSON block indicating which
     const _genResult = await adapter.generate(promptBlocks, 0.1);
     if (_genResult.usage) { recordUsage({ model: adapter.modelId, inputTokens: _genResult.usage.input_tokens || 0, outputTokens: _genResult.usage.output_tokens || 0 }); }
     const output = _genResult.text;
-    const isApproved = output.trim().toUpperCase() === 'APPROVED';
+// Fix M-37: Prevent bypass via prompt injection by requiring strict XML tags
+    const isApproved = /<AUDIT_RESULT>\s*APPROVED\s*<\/AUDIT_RESULT>/i.test(output);
     if (isApproved) {
       spinner.succeed(chalk.green(`${tag} Audit PASSED. Blueprint is ready for execution.`));
       return { passed: true };

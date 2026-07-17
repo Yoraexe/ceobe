@@ -44,9 +44,16 @@ export async function executeBrowserInteraction(
     targetUrl = `file:///${fullPath.replace(/\\/g, '/')}`;
   }
 
+  // SSRF Protection
+  if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+    const blockedDomains = ['localhost', '127.0.0.1', '169.254.169.254', '0.0.0.0', '::1'];
+    if (blockedDomains.some(d => targetUrl.includes(d)) || targetUrl.match(/https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
+      throw new Error('SSRF Protection: Access to private/local networks is blocked.');
+    }
+  }
+
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: true
   });
 
   const logs: string[] = [];

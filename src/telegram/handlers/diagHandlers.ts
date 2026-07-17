@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { getActiveSession } from '../sessionManager';
 import { readAllKeys, getRequiredKeyForActiveProviders, KEY_DEFINITIONS } from '../../utils/keyManager';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
 export async function handleDoctorCommand(bot: TelegramBot, chatId: number) {
   try {
@@ -37,16 +37,17 @@ export async function handleDoctorCommand(bot: TelegramBot, chatId: number) {
     }
     
     output += `\n*2. System Dependencies Check:*\n`;
-    const checkDep = (name: string, cmd: string) => new Promise<string>((res) => {
-      exec(cmd, (err: any, stdout: string) => {
+    // Fix L-03: Use execFile instead of exec to avoid shell injection
+    const checkDep = (name: string, binary: string, args: string[]) => new Promise<string>((res) => {
+      execFile(binary, args, (err: any, stdout: string) => {
         if (err) res(`  ✗ ${name}: Not found\n`);
         else res(`  ✓ ${name}: Available (${stdout.trim()})\n`);
       });
     });
-    output += await checkDep('Node.js', 'node -v');
-    output += await checkDep('npm', 'npm -v');
-    output += await checkDep('Docker', 'docker -v');
-    output += await checkDep('Git', 'git --version');
+    output += await checkDep('Node.js', 'node', ['-v']);
+    output += await checkDep('npm', 'npm', ['-v']);
+    output += await checkDep('Docker', 'docker', ['-v']);
+    output += await checkDep('Git', 'git', ['--version']);
     
     await bot.sendMessage(chatId, output, { parse_mode: 'Markdown' });
   } catch (e: any) {

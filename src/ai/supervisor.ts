@@ -38,7 +38,7 @@ function getSnapshotsMap(): Map<string, DocSnapshot> {
   return globalSnapshots;
 }
 
-export function getDocHash(content: string): string {
+function getDocHash(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
@@ -56,6 +56,11 @@ export function computeChangedDocs(currentDocs: Record<string, string>, reset: b
         timestamp: Date.now(),
         version: (prev?.version ?? 0) + 1
       });
+      // Fix M-11: Prevent memory leak by capping snapshots
+      if (snapshotsMap.size > 5000) {
+        const oldestKey = Array.from(snapshotsMap.keys())[0];
+        if (oldestKey) snapshotsMap.delete(oldestKey);
+      }
     }
   }
   return changed;
@@ -144,7 +149,8 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
       let regenDevops = true;
       let regenTask = true;
 
-      while (!isAuditPassed && retryCount <= MAX_RETRIES) {
+      // Fix M-09: Correct off-by-one retry count (semantic 3 retries means max 3 iterations after first fail)
+      while (!isAuditPassed && retryCount < MAX_RETRIES) {
         if (retryCount > 0) {
           log(chalk.yellow(`\n[Supervisor] Auto-Correction Cycle ${retryCount}/${MAX_RETRIES}...`));
           if (affectedMap) {
@@ -236,9 +242,10 @@ ${feedback}
       }
 
       if (!isAuditPassed) {
-        log(chalk.red(`\n[Supervisor Error] Maximum auto-correction retries (${MAX_RETRIES}) reached. Audit still failing.`));
+        const errorMsg = `Maximum auto-correction retries (${MAX_RETRIES}) reached. Audit still failing.`;
+        log(chalk.red(`\n[Supervisor Error] ${errorMsg}`));
         log(chalk.yellow('Supervisor is handing back control to you. Please manually fix the plans in .ceobe/ and run `ceobe audit`.'));
-        return;
+        throw new Error(errorMsg);
       }
 
       log(chalk.green(`\n✅ [Supervisor] Audit Passed! Architecture & Design are sound.`));
@@ -287,7 +294,8 @@ ${feedback}
       }
       // ─────────────────────────────────────────────────────────────────────────
 
-      while (!isCodeValid && executionRetry <= MAX_RETRIES) {
+      try {
+        while (!isCodeValid && executionRetry <= MAX_RETRIES) {
         if (executionRetry > 0) {
           log(chalk.yellow(`\n[Supervisor] Code Correction Cycle ${executionRetry}/${MAX_RETRIES}...`));
         }
@@ -346,6 +354,10 @@ ${feedback}
           executionRetry++;
         }
       }
+      } catch (fatalError: unknown) {
+        log(chalk.red(`\n[Supervisor Fatal Error] Crash during execution phase: ${fatalError instanceof Error ? fatalError.message : String(fatalError)}`));
+        isCodeValid = false;
+      }
 
       if (!isCodeValid) {
         log(chalk.red(`\n[Supervisor Error] Maximum code correction retries (${MAX_RETRIES}) reached. Verification still failing.`));
@@ -359,7 +371,7 @@ ${feedback}
         }
         // ───────────────────────────────────────────────────────────────────────
 
-        return;
+        throw new Error('Verification failed: Maximum code correction retries reached.');
       }
     }
 
@@ -394,18 +406,12 @@ ${feedback}
 
   if (useWorktree && worktreePath) {
     const parentCtx = executionContext.getStore() || { projectPath: process.cwd() };
-    await executionContext.run({ ...parentCtx, projectPath: worktreePath }, async () => {
-      try {
-        await runCore();
-        // Assume success if no throw
-        // Switch back to parent context to merge, so cwd is correct
-      } catch (e) {
-        throw e;
-      }
-    });
-
-    // Merge & Cleanup outside the child context so git commands run on original dir
     try {
+      await executionContext.run({ ...parentCtx, projectPath: worktreePath }, async () => {
+        await runCore();
+      });
+
+      // Merge & Cleanup outside the child context so git commands run on original dir
       await mergeWorktree(branchName);
     } finally {
       await removeWorktree(worktreePath);

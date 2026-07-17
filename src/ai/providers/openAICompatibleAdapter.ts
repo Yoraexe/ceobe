@@ -6,6 +6,7 @@
 // Side Effects: Makes HTTP requests to the configured base URL
 
 import OpenAI from 'openai';
+import * as crypto from 'crypto';
 import { withRetry } from '../../utils/retry';
 import type {
   IProviderAdapter,
@@ -50,7 +51,8 @@ function toOpenAIMessages(
         for (const tr of toolResults) {
           result.push({
             role: 'tool',
-            tool_call_id: tr.tool_use_id || 'unknown',
+            // Fix L-10: Use random UUID instead of static 'unknown' to prevent tool_call_id collisions
+            tool_call_id: tr.tool_use_id || crypto.randomUUID(),
             content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
           });
         }
@@ -163,8 +165,8 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
           try {
             parsedInput = JSON.parse(tc.function.arguments || '{}');
           } catch (e: any) {
-            console.error(`[OpenAIAdapter] Failed to parse tool arguments: ${e.message}`);
-            parsedInput = { _error: "Malformed JSON arguments", raw: tc.function.arguments };
+            // Fix M-23: Throw error on malformed JSON instead of silently packaging it
+            throw new Error(`[OpenAIAdapter] Malformed JSON in tool arguments for ${tc.function.name}: ${tc.function.arguments}`);
           }
           content.push({
             type: 'tool_use',

@@ -6,7 +6,7 @@ export interface ProjectRegistry {
   [name: string]: string; // name -> absolute path
 }
 
-export function getProjectRegistryPath(): string {
+function getProjectRegistryPath(): string {
   return path.join(os.homedir(), '.ceobe', 'projects.json');
 }
 
@@ -20,7 +20,7 @@ export function readProjects(): ProjectRegistry {
   }
 }
 
-export function writeProjects(projects: ProjectRegistry): void {
+function writeProjects(projects: ProjectRegistry): void {
   const filePath = getProjectRegistryPath();
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -31,12 +31,4 @@ export function registerProject(name: string, absolutePath: string): void {
   const projects = readProjects();
   projects[name] = path.resolve(absolutePath);
   writeProjects(projects);
-}
-
-export function removeProject(name: string): boolean {
-  const projects = readProjects();
-  if (!(name in projects)) return false;
-  delete projects[name];
-  writeProjects(projects);
-  return true;
 }

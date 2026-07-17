@@ -8,7 +8,7 @@
 // Side Effects: Tidak ada I/O. Pure function, hanya parsing string.
 // v1.7.0: Modul baru — Fase 6 dari Ceobe Enterprise Upgrade (Multi-Agent Parallel Execution).
 
-export interface TaskItem {
+interface TaskItem {
   id: string;
   title: string;
   content: string;
