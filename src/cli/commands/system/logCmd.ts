@@ -1,3 +1,9 @@
+// Tujuan: Menampilkan log aktivitas dan eksekusi AI yang tercatat.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, fs, path, utils/context
+// Main Functions: registerLogCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

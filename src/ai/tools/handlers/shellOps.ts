@@ -1,3 +1,9 @@
+// Tujuan: Mengeksekusi perintah shell pada sistem host secara sinkron atau asinkron di dalam sandbox Docker.
+// Caller: src/ai/tools/systemTools.ts
+// Dependensi: child_process, path, fs, config/env, utils/context, util
+// Main Functions: handleExecuteCommand, handleStartBackgroundService, handleStopBackgroundService
+// Side Effects: Tidak ada.
+
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';

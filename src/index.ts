@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// Module: src/index.ts
+// Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
+// Caller: Executed directly via terminal CLI.
+// Dependensi: commander, src/cli/commands/*
+// Main Functions: CLI route handlers
+
 import { Command } from 'commander';
 import { printHelp, VERSION } from './ui/banner';
 
@@ -8,12 +14,6 @@ import { registerExecuteCommand } from './cli/commands/execute';
 import { registerSystemCommands } from './cli/commands/system';
 import { registerExportRulesCommand } from './cli/commands/exportRules';
 import { registerPentestCommand } from './cli/commands/pentest';
-
-// Module: src/index.ts
-// Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
-// Caller: Executed directly via terminal CLI.
-// Dependensi: commander, src/cli/commands/*
-// Main Functions: CLI route handlers
 
 const program = new Command();
 

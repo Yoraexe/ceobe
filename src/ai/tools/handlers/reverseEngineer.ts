@@ -1,3 +1,9 @@
+// Tujuan: Menganalisis endpoint API, pola UI, dan arsitektur teknologi dari URL target secara dinamis.
+// Caller: src/ai/tools/systemTools.ts
+// Dependensi: fs, path, url, utils/browserAutomation, utils/context
+// Main Functions: handleReverseEngineer
+// Side Effects: Tidak ada.
+
 import puppeteer from 'puppeteer';
 
 interface ReconResult {

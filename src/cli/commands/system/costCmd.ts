@@ -1,3 +1,9 @@
+// Tujuan: Menampilkan total estimasi pengeluaran biaya token pemanggilan API selama sesi aktif.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, utils/costTracker
+// Main Functions: registerCostCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { getCostSummary } from '../../../utils/costTracker';

@@ -1,3 +1,9 @@
+// Tujuan: Menjalankan scanner pendeteksi hutang teknis kode di dalam direktori kerja.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, ai/memory/debtScanner
+// Main Functions: registerDebtCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { scanTechnicalDebt } from '../../../ai/memory/debtScanner';

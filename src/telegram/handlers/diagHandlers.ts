@@ -1,3 +1,9 @@
+// Tujuan: Menangani perintah diagnosis '/doctor' dari bot Telegram.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api, utils/doctor
+// Main Functions: handleDiagCommand
+// Side Effects: Tidak ada.
+
 import TelegramBot from 'node-telegram-bot-api';
 import { getActiveSession } from '../sessionManager';
 import { readAllKeys, getRequiredKeyForActiveProviders, KEY_DEFINITIONS } from '../../utils/keyManager';

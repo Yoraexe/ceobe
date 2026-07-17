@@ -1,3 +1,9 @@
+// Tujuan: Menjalankan serangkaian benchmark pengujian kinerja AI models terhadap tugas pembuatan kode standar.
+// Caller: src/cli/commands/system/benchmarkCmd.ts
+// Dependensi: providers/router, dotenv
+// Main Functions: runBenchmarkSuite
+// Side Effects: Tidak ada.
+
 import { createProviderAdapter } from '../providers/router';
 
 import 'dotenv/config';

@@ -1,3 +1,9 @@
+// Tujuan: Membuat dokumen blueprint spesifikasi teknis dan rencana tugas (BRD, Design Spec, Architecture Spec, DevOps Config, Task List) menggunakan adapter AI.
+// Caller: src/ai/supervisor.ts
+// Dependensi: providers/router, utils/promptBuilder, utils/costTracker, utils/stateManager
+// Main Functions: generateBRD, generateDesignSpec, generateArchitecture, generateImplementationPlan, generateDevOpsConfig
+// Side Effects: Tidak ada.
+
 import ora from 'ora';
 import chalk from 'chalk';
 import { createProviderAdapter } from '../providers/router';

@@ -1,3 +1,9 @@
+// Tujuan: Menjalankan pemeriksaan mandiri diagnostik sistem untuk memverifikasi API keys dan fungsionalitas CLI.
+// Caller: src/cli/commands/system/doctorCmd.ts, src/telegram/handlers/diagHandlers.ts
+// Dependensi: utils/context, utils/keyManager, child_process, fs, path
+// Main Functions: runDoctor
+// Side Effects: Tidak ada.
+
 import { getProjectDir } from './context';
 import chalk from 'chalk';
 import { env } from '../config/env';

@@ -1,3 +1,9 @@
+// Tujuan: Mengaudit seluruh dokumen blueprint rencana tugas yang dihasilkan secara independen untuk memastikan kepatuhan aturan rekayasa.
+// Caller: src/ai/supervisor.ts
+// Dependensi: providers/router, utils/contextLoader, utils/costTracker, utils/context
+// Main Functions: auditPlan
+// Side Effects: Tidak ada.
+
 import ora from 'ora';
 import chalk from 'chalk';
 import { createProviderAdapter } from '../providers/router';

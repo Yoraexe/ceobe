@@ -1,3 +1,9 @@
+// Tujuan: Mendefinisikan skema tipe dan antarmuka (interfaces) bersama untuk modul AI Providers dan adapter router.
+// Caller: src/ai/providers/*, src/ai/executor.ts, src/ai/planner.ts
+// Dependensi: -
+// Main Functions: NormalizedMessage, NormalizedTool, NormalizedResponse, IProviderAdapter
+// Side Effects: Tidak ada.
+
 // Module: src/ai/providers/types.ts
 // Purpose: Shared types for the Provider Router abstraction layer.
 // Caller: executor.ts, all provider implementations

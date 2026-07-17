@@ -1,3 +1,9 @@
+// Tujuan: Mengadaptasikan API kompatibel OpenAI (DeepSeek, Qwen, GLM, Kimi, dll.) ke antarmuka terpadu IProviderAdapter.
+// Caller: src/ai/providers/router.ts
+// Dependensi: openai, utils/retry
+// Main Functions: OpenAICompatibleAdapter
+// Side Effects: Tidak ada.
+
 // Module: src/ai/providers/openAICompatibleAdapter.ts
 // Purpose: Universal adapter for any OpenAI-compatible API.
 //          Covers: GLM (Zhipu), Kimi (Moonshot), DeepSeek, Qwen, Groq, Together AI, Ollama, etc.

@@ -1,3 +1,9 @@
+// Tujuan: Mereset log eksekusi, akumulasi biaya, dan status pengerjaan tugas.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, utils/stateManager, utils/costTracker
+// Main Functions: registerResetCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

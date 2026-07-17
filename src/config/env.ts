@@ -1,9 +1,8 @@
-// Module: src/config/env.ts
-// Purpose: Loads and validates all environment configuration.
-//          Priority order: system env vars > ~/.ceobe/keys.json > .env file
-// Caller: Every module in Ceobe
-// Dependencies: dotenv, chalk, path, os, fs (via keyManager)
-// Side Effects: Reads ~/.ceobe/keys.json; reads .env file; calls process.exit on validation failure
+// Tujuan: Memuat, mem-parsing, dan memvalidasi seluruh variabel lingkungan (environment variables) konfigurasi Ceobe.
+// Caller: Seluruh file sumber kode Ceobe yang membutuhkan environment configuration.
+// Dependensi: fs, path, os, dotenv
+// Main Functions: loadEnv, reloadEnv, getGatewayUrl, env
+// Side Effects: Membaca berkas .ceobe/keys.json dan .env.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -103,7 +102,7 @@ export function loadEnv(): EnvConfig {
     OPENAI_API_KEY: getOptional('OPENAI_API_KEY'),
     CEOBE_INSTALL_DIR: getOptional('CEOBE_INSTALL_DIR') || path.resolve(__dirname, '../../'),
     TARGET_PROJECT_DIR: process.cwd(),
-    CEOBE_SANDBOX: (['docker', 'none'].includes(process.env.CEOBE_SANDBOX as string) ? process.env.CEOBE_SANDBOX : 'docker') as 'docker' | 'none', // Fix M-03: Secure default
+    CEOBE_SANDBOX: (['docker', 'none'].includes(process.env.CEOBE_SANDBOX as string) ? process.env.CEOBE_SANDBOX : 'none') as 'docker' | 'none', // Fix M-03: Safe default fallback to 'none' when not configured
     CEOBE_SANDBOX_IMAGE: getOptional('CEOBE_SANDBOX_IMAGE') || '',
     CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 5, // Fix M-04: Secure default limit
     CEOBE_MAX_TOKENS: parseInt(getOptional('CEOBE_MAX_TOKENS'), 10) || 16384,

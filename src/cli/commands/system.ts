@@ -1,3 +1,9 @@
+// Tujuan: Mendaftarkan seluruh perintah CLI sub-sistem (benchmark, cost, mcp, status, rollback, dll.) ke commander.
+// Caller: src/index.ts
+// Dependensi: commander, system/*
+// Main Functions: registerSystemCommands
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import { registerIndexCommand } from './system/indexCmd';
 import { registerDoctorCommand } from './system/doctorCmd';

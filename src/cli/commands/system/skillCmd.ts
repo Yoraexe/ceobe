@@ -1,3 +1,9 @@
+// Tujuan: Menampilkan daftar skill yang tersedia dan mengimpor skill baru ke repositori.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, utils/contextLoader, fs, path
+// Main Functions: registerSkillCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

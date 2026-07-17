@@ -1,3 +1,9 @@
+// Tujuan: Memicu refleksi log eksekusi secara lokal untuk mengevaluasi efisiensi langkah kerja.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, ai/reflectiveAnalyzer
+// Main Functions: registerReflectCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import { analyzeExecutionLog } from '../../../ai/reflectiveAnalyzer';
 

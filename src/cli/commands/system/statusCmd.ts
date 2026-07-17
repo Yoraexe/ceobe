@@ -1,3 +1,9 @@
+// Tujuan: Menampilkan status pipeline aktif, file-file yang termodifikasi, dan snapshot git saat ini.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, utils/stateManager, utils/gitManager, utils/modeManager
+// Main Functions: registerStatusCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

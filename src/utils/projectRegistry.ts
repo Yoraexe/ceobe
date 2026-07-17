@@ -1,3 +1,9 @@
+// Tujuan: Mengelola berkas registri proyek lokal (.ceobe/projects.json) untuk pemetaan sesi proyek.
+// Caller: src/telegram/sessionManager.ts, src/telegram/handlers/projectHandlers.ts
+// Dependensi: fs, path, os
+// Main Functions: readProjects, registerProject
+// Side Effects: Tidak ada.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

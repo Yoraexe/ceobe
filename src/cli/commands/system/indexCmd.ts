@@ -1,3 +1,9 @@
+// Tujuan: Memicu pengindeksan kode penuh untuk menyimpan embeddings pencarian semantik.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, ai/memory/indexer
+// Main Functions: registerIndexCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { indexWorkspace } from '../../../ai/memory/indexer';

@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan handler eksekusi asinkron untuk operasi filesystem (baca, tulis, edit, hapus, rename, buat direktori) yang dipanggil oleh model.
+// Caller: src/ai/tools/systemTools.ts
+// Dependensi: fs, path, utils/context, utils/stateManager
+// Main Functions: handleReadFile, handleWriteFile, handleEditFile, handleRenameFile, handleMoveFile, handleCreateDirectory, handleListDirectory, handleDeleteFile
+// Side Effects: Tidak ada.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { getProjectDir } from '../../../utils/context';

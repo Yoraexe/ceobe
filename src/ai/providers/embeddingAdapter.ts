@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan pembungkus adapter untuk model embeddings (Google Gemini, OpenAI, dll.) guna mendukung pencarian semantik.
+// Caller: src/ai/memory/indexer.ts
+// Dependensi: @google/genai, openai, config/env, utils/retry
+// Main Functions: createEmbeddingAdapter
+// Side Effects: Tidak ada.
+
 // Module: src/ai/providers/embeddingAdapter.ts
 // Purpose: Universal embedding adapter for Ceobe's RAG memory (Indexer).
 // Caller: src/ai/memory/indexer.ts

@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan pembantu format pesan chat untuk memangkas riwayat konteks tanpa memutus hubungan pemanggilan fungsi.
+// Caller: src/ai/executor.ts
+// Dependensi: types
+// Main Functions: trimMessages, getExecutorSystemInstruction, truncateModelResponse, truncateToolResult, cleanupOldSelfHeals
+// Side Effects: Tidak ada.
+
 import type { NormalizedMessage, NormalizedContentBlock } from '../providers/types';
 
 function splitAtNewline(text: string, index: number, direction: 'forward' | 'backward'): number {

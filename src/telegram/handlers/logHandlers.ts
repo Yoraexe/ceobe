@@ -1,3 +1,9 @@
+// Tujuan: Menangani perintah monitoring log '/logs' dan status biaya '/costs' dari Telegram.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api, fs, path, utils/context, utils/costTracker
+// Main Functions: handleLogCommand
+// Side Effects: Tidak ada.
+
 import TelegramBot from 'node-telegram-bot-api';
 import * as fs from 'fs';
 import * as path from 'path';

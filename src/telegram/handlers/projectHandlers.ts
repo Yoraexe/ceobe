@@ -1,3 +1,9 @@
+// Tujuan: Menangani manajemen proyek Telegram seperti pergantian sesi kerja aktif '/cd' dan pendaftaran proyek baru '/addproject'.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api, utils/projectRegistry, telegram/sessionManager, utils/context
+// Main Functions: handleProjectsCommand
+// Side Effects: Tidak ada.
+
 import TelegramBot from 'node-telegram-bot-api';
 import * as fs from 'fs';
 import * as path from 'path';

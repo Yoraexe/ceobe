@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan handler pencarian semantik (vektor) dan pencarian teks penuh (grep/inverted index) pada codebase proyek.
+// Caller: src/ai/tools/systemTools.ts
+// Dependensi: fs, path, ai/memory/vectorStore, ai/memory/indexer, ai/memory/fullTextSearch, utils/context
+// Main Functions: handleSearchCodebase, handleGrepCodebase
+// Side Effects: Tidak ada.
+
 import { getEmbedding } from '../../memory/indexer';
 import { searchEmbeddings } from '../../memory/vectorStore';
 import { searchFullText, loadFullTextIndex } from '../../memory/fullTextSearch';

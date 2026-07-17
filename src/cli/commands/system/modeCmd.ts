@@ -1,3 +1,9 @@
+// Tujuan: Mengubah konfigurasi mode operasional aktif (ask/autonomous).
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, utils/modeManager
+// Main Functions: registerModeCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { setMode, printModeBadge, type CeobeMode } from '../../../utils/modeManager';

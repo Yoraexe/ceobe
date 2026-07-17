@@ -1,3 +1,9 @@
+// Tujuan: Mengadaptasikan API Anthropic Claude ke antarmuka terpadu IProviderAdapter untuk pemanggilan chat dan generasi teks.
+// Caller: src/ai/providers/router.ts
+// Dependensi: @anthropic-ai/sdk, config/env, utils/retry
+// Main Functions: AnthropicAdapter
+// Side Effects: Tidak ada.
+
 // Module: src/ai/providers/anthropicAdapter.ts
 // Purpose: Adapts the Anthropic Claude API to Ceobe's normalized IProviderAdapter interface.
 // Caller: src/ai/providers/router.ts

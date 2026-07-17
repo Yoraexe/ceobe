@@ -1,3 +1,9 @@
+// Tujuan: Mengelola penyimpanan, pencarian, dan penerapan template blueprint rencana tugas (BRD, Design, Arch, Task, DevOps).
+// Caller: src/ai/supervisor.ts
+// Dependensi: fs, path, utils/context
+// Main Functions: findMatchingTemplate, applyTemplate, saveTemplate
+// Side Effects: Tidak ada.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';

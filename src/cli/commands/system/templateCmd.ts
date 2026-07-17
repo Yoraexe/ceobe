@@ -1,3 +1,9 @@
+// Tujuan: Mengelola template rencana tugas untuk mempercepat perencanaan.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, ai/templateManager
+// Main Functions: registerTemplateCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import { getTemplates, clearTemplates, deleteTemplate } from '../../../ai/templateManager';
 import chalk from 'chalk';

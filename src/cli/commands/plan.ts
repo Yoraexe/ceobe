@@ -1,3 +1,9 @@
+// Tujuan: Mendaftarkan perintah CLI 'ceobe plan' untuk menghasilkan blueprint arsitektur dan spesifikasi desain proyek.
+// Caller: src/index.ts
+// Dependensi: commander, fs, path, chalk, supervisor, documentGenerators, context
+// Main Functions: registerPlanCommands
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

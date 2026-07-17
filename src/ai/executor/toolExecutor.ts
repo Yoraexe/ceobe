@@ -1,3 +1,9 @@
+// Tujuan: Menjalankan pemanggilan alat (tool calls) dari respon model dan merekam state serta konsumsi token secara dinamis.
+// Caller: src/ai/executor.ts
+// Dependensi: tools/systemTools, utils/modeManager, utils/stateManager, utils/context, utils/messageFormatter, pentest/talosGuard, pentest/toolsCatalog
+// Main Functions: executeToolCalls
+// Side Effects: Tidak ada.
+
 import chalk from 'chalk';
 import { handleToolCall } from '../tools/systemTools';
 import { getActiveMode, SENSITIVE_TOOLS, confirmToolCall } from '../../utils/modeManager';

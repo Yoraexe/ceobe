@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan perintah CLI 'ceobe system benchmark' untuk menguji kecepatan dan akurasi model AI.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, benchmark/benchmarkRunner
+// Main Functions: registerBenchmarkCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';

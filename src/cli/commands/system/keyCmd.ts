@@ -1,3 +1,9 @@
+// Tujuan: Mengelola penulisan, penghapusan, dan pembacaan API keys lokal.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, cli/utils/keyWizard
+// Main Functions: registerKeyCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { setKey, removeKey, findKeyDef, KEY_DEFINITIONS, readAllKeys } from '../../../utils/keyManager';

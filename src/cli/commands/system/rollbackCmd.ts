@@ -1,3 +1,9 @@
+// Tujuan: Mengembalikan berkas kerja proyek ke snapshot Git sebelum eksekusi AI dimulai.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, utils/gitManager, utils/stateManager
+// Main Functions: registerRollbackCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as fs from 'fs';

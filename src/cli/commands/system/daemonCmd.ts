@@ -1,3 +1,9 @@
+// Tujuan: Menjalankan Daemon bot Telegram Ceobe untuk pemantauan dan kontrol asisten dari jarak jauh.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, telegram/telegramDaemon
+// Main Functions: registerDaemonCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { startTelegramDaemon } from '../../../telegram/telegramDaemon';

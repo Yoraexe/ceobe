@@ -1,3 +1,9 @@
+// Tujuan: Mengadaptasikan API Google Gemini ke antarmuka terpadu IProviderAdapter untuk pemanggilan chat dan generasi teks.
+// Caller: src/ai/providers/router.ts
+// Dependensi: @google/genai, config/env, utils/retry
+// Main Functions: GeminiAdapter
+// Side Effects: Tidak ada.
+
 // Module: src/ai/providers/geminiAdapter.ts
 // Purpose: Adapts the Google Gemini API to Ceobe's normalized IProviderAdapter interface.
 // Caller: src/ai/providers/router.ts

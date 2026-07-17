@@ -1,3 +1,9 @@
+// Tujuan: Memuat plugin kustom Ceobe dari direktori target secara dinamis dan mendaftarkannya sebagai runtime tools.
+// Caller: src/ai/executor.ts, src/ai/tools/systemTools.ts
+// Dependensi: fs, path, url
+// Main Functions: loadDynamicTools, handlePluginCall, clearLoadedPlugins
+// Side Effects: Tidak ada.
+
 import { log } from '../../utils/context';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan handler visual audit menggunakan Chromium untuk menangkap tangkapan layar URL atau berkas lokal.
+// Caller: src/ai/tools/systemTools.ts
+// Dependensi: utils/browserAutomation, fileOps
+// Main Functions: handleVisualAudit
+// Side Effects: Tidak ada.
+
 import { executeBrowserInteraction } from '../../../utils/browserAutomation';
 import { validatePath } from './fileOps';
 

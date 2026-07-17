@@ -1,3 +1,9 @@
+// Tujuan: Memangkas berkas log eksekusi yang terlalu besar secara manual.
+// Caller: src/cli/commands/system.ts
+// Dependensi: commander, fs, path, utils/context
+// Main Functions: registerTrimCommand
+// Side Effects: Tidak ada.
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';

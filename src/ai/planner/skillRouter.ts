@@ -1,3 +1,9 @@
+// Tujuan: Menganalisis deskripsi tugas utama untuk memilih skill yang relevan dari repositori skill lokal secara otomatis.
+// Caller: src/ai/planner/documentGenerators.ts, src/ai/supervisor.ts
+// Dependensi: providers/router, utils/promptBuilder, utils/contextLoader, utils/costTracker
+// Main Functions: selectRelevantSkills
+// Side Effects: Tidak ada.
+
 import ora from 'ora';
 import chalk from 'chalk';
 import { createProviderAdapter } from '../providers/router';

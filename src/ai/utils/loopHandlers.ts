@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan pembantu alur loop supervisor seperti persetujuan interaktif pengguna, verifikasi multi-bahasa, dan penghentian proses background.
+// Caller: src/ai/supervisor.ts
+// Dependensi: fs, path, chalk, readline, child_process, utils/context, utils/stateManager
+// Main Functions: askUserConfirmation, handleSessionResume, cleanupBackgroundProcesses, runPolyglotVerification
+// Side Effects: Tidak ada.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
