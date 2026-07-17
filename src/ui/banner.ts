@@ -45,7 +45,7 @@ export function printBanner(): void {
   console.log('');
   console.log(
     chalk.gray('  Autonomous AI Engineering Orchestrator') +
-    chalk.dim(` · v${VERSION} [Mastery Audit Edition + Eunectes Pentest]`)
+    chalk.dim(` · v${VERSION} [Mastery Audit Edition]`)
   );
   console.log(
     chalk.dim(`  🧠 Planner: ${plannerDisplay}`) +
@@ -143,8 +143,6 @@ export function printHelp(): void {
 
   const cmds: [string, string, string?][] = [
     ['🤖  auto',     '"Build a REST API in Go"',        'Full autonomous pipeline (plan→audit→execute)'],
-    ['🎯  pentest',  '<target> [--mode <mode>]',         'Autonomous pentest engagement (Eunectes-powered)'],
-    ['🔍  fullscan', '<target>',                         'Alias: pentest --mode auto (Eunectes UX)'],
     ['📋  plan',     '"Landing page with auth"',         'Generate BRD, design, architecture & task plan'],
     ['🔎  audit',    '',                                 'QA-check the plan before execution'],
     ['🚀  execute',  '',                                 'Execute the approved task plan'],
@@ -167,19 +165,7 @@ export function printHelp(): void {
     );
   }
 
-  console.log('');
-  console.log(chalk.bold('  PENTEST MODES (ceobe pentest --mode <mode>)'));
-  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  console.log(`  ${chalk.red('auto')}               ${chalk.dim('Auto-detect berdasarkan target')}`);
-  console.log(`  ${chalk.red('bug-bounty')}         ${chalk.dim('HackerOne / Bugcrowd / Intigriti — scope-strict')}`);
-  console.log(`  ${chalk.red('red-team')}           ${chalk.dim('Stealth ops, persistence, lateral movement')}`);
-  console.log(`  ${chalk.red('ctf')}                ${chalk.dim('HackTheBox / TryHackMe / picoCTF — speed-first')}`);
-  console.log(`  ${chalk.red('blue-team')}          ${chalk.dim('Detection, IR, defensive audit')}`);
-  console.log(`  ${chalk.red('offensive')}          ${chalk.dim('Aggressive exploitation, PoC chains')}`);
-  console.log(`  ${chalk.red('grey-hat')}           ${chalk.dim('Balanced offensive/defensive')}`);
-  console.log(`  ${chalk.red('forensic')}           ${chalk.dim('Evidence preservation, chain-of-custody')}`);
-  console.log(`  ${chalk.red('reverse-engineering')} ${chalk.dim('Binary analysis, decompilation')}`);
-  console.log(`  ${chalk.red('mobile-pentest')}     ${chalk.dim('Android / iOS assessment')}`);
+
 
   console.log('');
   console.log(chalk.bold('  TELEGRAM COMMANDS (When running daemon --telegram)'));
@@ -212,7 +198,6 @@ export function printHelp(): void {
   console.log(chalk.dim('  ─────────────────────────────────────────────────'));
   console.log(`  ${chalk.dim('1.')} ${chalk.cyan('ceobe setup')}                  ${chalk.dim('Configure your API keys')}`);
   console.log(`  ${chalk.dim('2.')} ${chalk.cyan('ceobe auto "your idea"')}       ${chalk.dim('Let Ceobe build it fully autonomously')}`);
-  console.log(`  ${chalk.dim('   or')} ${chalk.cyan('ceobe fullscan <target>')}   ${chalk.dim('Run autonomous pentest')}`);
   console.log(`  ${chalk.dim('3.')} ${chalk.cyan('ceobe plan "your idea"')}       ${chalk.dim('Generate plan for manual review')}`);
   console.log(`  ${chalk.dim('4.')} ${chalk.cyan('ceobe audit')}                  ${chalk.dim('Verify plan integrity')}`);
   console.log(`  ${chalk.dim('5.')} ${chalk.cyan('ceobe execute')}                ${chalk.dim('Build the project')}`);
