@@ -1,7 +1,7 @@
 // Tujuan: Mengelola berkas registri proyek lokal (.ceobe/projects.json) untuk pemetaan sesi proyek.
 // Caller: src/telegram/sessionManager.ts, src/telegram/handlers/projectHandlers.ts
 // Dependensi: fs, path, os
-// Main Functions: readProjects, registerProject
+// Main Functions: readProjects, registerProject, removeProject
 // Side Effects: Tidak ada.
 
 import * as fs from 'fs';
@@ -37,4 +37,12 @@ export function registerProject(name: string, absolutePath: string): void {
   const projects = readProjects();
   projects[name] = path.resolve(absolutePath);
   writeProjects(projects);
+}
+
+export function removeProject(name: string): void {
+  const projects = readProjects();
+  if (projects[name]) {
+    delete projects[name];
+    writeProjects(projects);
+  }
 }

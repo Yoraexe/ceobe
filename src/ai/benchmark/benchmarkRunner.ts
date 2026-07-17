@@ -1,7 +1,7 @@
 // Tujuan: Menjalankan serangkaian benchmark pengujian kinerja AI models terhadap tugas pembuatan kode standar.
 // Caller: src/cli/commands/system/benchmarkCmd.ts
 // Dependensi: providers/router, dotenv
-// Main Functions: runBenchmarkSuite
+// Main Functions: runBenchmarks
 // Side Effects: Tidak ada.
 
 import { createProviderAdapter } from '../providers/router';
@@ -41,7 +41,7 @@ export interface BenchmarkResult {
 export async function runBenchmarks(): Promise<BenchmarkResult[]> {
   const models = [];
   if (process.env.OPENAI_API_KEY) models.push({ id: 'gpt-4o-mini', role: 'planner' });
-  if (process.env.ANTHROPIC_API_KEY) models.push({ id: 'claude-3-5-sonnet-20241022', role: 'planner' });
+  if (process.env.ANTHROPIC_API_KEY) models.push({ id: 'claude-4-5-sonnet', role: 'planner' });
   if (process.env.GEMINI_API_KEY) models.push({ id: 'gemini-2.5-flash', role: 'planner' });
 
   if (models.length === 0) {
@@ -51,13 +51,11 @@ export async function runBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
 
   for (const modelDef of models) {
-    // Override env variable to force the provider for this iteration
-    let originalProvider = process.env.CEOBE_PLANNER_PROVIDER;
-    if (modelDef.id.startsWith('gpt')) process.env.CEOBE_PLANNER_PROVIDER = 'openai';
-    if (modelDef.id.startsWith('claude')) process.env.CEOBE_PLANNER_PROVIDER = 'anthropic';
-    if (modelDef.id.startsWith('gemini')) process.env.CEOBE_PLANNER_PROVIDER = 'gemini';
+    let provider = 'openai';
+    if (modelDef.id.startsWith('claude')) provider = 'anthropic';
+    if (modelDef.id.startsWith('gemini')) provider = 'gemini';
 
-    const adapter = createProviderAdapter('planner');
+    const adapter = createProviderAdapter('planner', { provider, model: modelDef.id });
     
     const benchmarkResult: BenchmarkResult = {
       model: modelDef.id,
@@ -105,9 +103,6 @@ Output ONLY the raw code or raw JSON execution steps needed. Do not use markdown
     }
 
     results.push(benchmarkResult);
-    
-    // Restore
-    process.env.CEOBE_PLANNER_PROVIDER = originalProvider;
   }
 
   return results;

@@ -18,16 +18,17 @@ import chalk from 'chalk';
  * Maps a provider slug to its base URL.
  */
 const KNOWN_PROVIDERS: Record<string, { baseURL: string; defaultModel: string }> = {
-  claude:   { baseURL: 'https://api.anthropic.com/v1', defaultModel: 'claude-4-5-sonnet' },
-  gemini:   { baseURL: 'https://generativelanguage.googleapis.com', defaultModel: 'gemini-2.5-flash' },
-  glm:      { baseURL: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-5.1-flash' },
-  kimi:     { baseURL: 'https://api.moonshot.cn/v1', defaultModel: 'kimi-k2.6-plus' },
-  deepseek: { baseURL: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-v3' },
-  qwen:     { baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-3-max' },
-  groq:     { baseURL: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
-  together: { baseURL: 'https://api.together.xyz/v1', defaultModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo' },
-  ollama:   { baseURL: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
-  openai:   { baseURL: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
+  claude:    { baseURL: 'https://api.anthropic.com/v1', defaultModel: 'claude-4-5-sonnet' },
+  anthropic: { baseURL: 'https://api.anthropic.com/v1', defaultModel: 'claude-4-5-sonnet' },
+  gemini:    { baseURL: 'https://generativelanguage.googleapis.com', defaultModel: 'gemini-2.5-flash' },
+  glm:       { baseURL: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-5.1-flash' },
+  kimi:      { baseURL: 'https://api.moonshot.cn/v1', defaultModel: 'kimi-k2.6-plus' },
+  deepseek:  { baseURL: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-v3' },
+  qwen:      { baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-3-max' },
+  groq:      { baseURL: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
+  together:  { baseURL: 'https://api.together.xyz/v1', defaultModel: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo' },
+  ollama:    { baseURL: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
+  openai:    { baseURL: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
 };
 
 /**
@@ -39,7 +40,10 @@ const KNOWN_PROVIDERS: Record<string, { baseURL: string; defaultModel: string }>
  *   2. If not set, fall back to CEOBE_PLANNER_PROVIDER / CEOBE_PLANNER_MODEL.
  * This ensures the QA auditor is always a DIFFERENT "eye" than the Executor.
  */
-export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'executor'): IProviderAdapter {
+export function createProviderAdapter(
+  role: 'planner' | 'executor' | 'qa' = 'executor',
+  overrides?: { provider?: string; model?: string }
+): IProviderAdapter {
   const roleUpper = role.toUpperCase();
 
   let provider: string;
@@ -47,7 +51,12 @@ export function createProviderAdapter(role: 'planner' | 'executor' | 'qa' = 'exe
 
   let providerRole = roleUpper;
 
-  if (role === 'qa') {
+  if (overrides?.provider) {
+    provider = overrides.provider.toLowerCase();
+    modelOverride = overrides.model;
+    providerRole = roleUpper;
+    log(chalk.dim(`[Provider Router] Role: ${roleUpper} | Using explicit overrides: ${provider} -> ${modelOverride}`));
+  } else if (role === 'qa') {
     // QA: Use dedicated QA provider first, fallback to Planner
     if (process.env['CEOBE_QA_PROVIDER']) {
       provider = process.env['CEOBE_QA_PROVIDER'].toLowerCase();

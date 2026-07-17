@@ -1,6 +1,6 @@
 // Tujuan: Menjalankan tahapan rekognisi pasif terhadap host target eksternal.
 // Caller: src/cli/commands/system.ts
-// Dependensi: commander, ai/pentest/pentestSupervisor
+// Dependensi: commander, ai/tools/handlers/reverseEngineer
 // Main Functions: registerReconCommand
 // Side Effects: Tidak ada.
 
