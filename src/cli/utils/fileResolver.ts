@@ -1,3 +1,9 @@
+// Tujuan: Memvalidasi dan meresolusi berkas input (mockup UI atau dokumen PRD) sebelum diproses oleh CLI planner.
+// Caller: src/cli/commands/plan.ts, src/cli/commands/auto.ts
+// Dependensi: fs, path, chalk, ui/banner
+// Main Functions: resolveFileInput
+// Side Effects: Membaca berkas input dan memverifikasi lokasinya agar tidak melintasi batas direktori proyek.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';

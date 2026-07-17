@@ -1,3 +1,9 @@
+// Tujuan: Menangani perintah bot Telegram '/start' dan '/help' untuk menyambut pengguna dan memaparkan manual bantuan.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api
+// Main Functions: handleStartCommand, handleHelpCommand
+// Side Effects: Mengirim pesan teks panduan ke Telegram.
+
 import TelegramBot from 'node-telegram-bot-api';
 
 export async function handleStartCommand(bot: TelegramBot, chatId: number) {

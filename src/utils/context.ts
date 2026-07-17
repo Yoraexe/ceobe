@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan penyimpanan konteks eksekusi asinkron (AsyncLocalStorage) untuk Ceobe.
+// Caller: Seluruh modul di src/ (supervisor, executor, tools, telegram, utils)
+// Dependensi: async_hooks, config/env, util
+// Main Functions: executionContext, getProjectDir, log
+// Side Effects: Tidak ada.
+
 import { AsyncLocalStorage } from 'async_hooks';
 import { env } from '../config/env';
 import { inspect } from 'util';

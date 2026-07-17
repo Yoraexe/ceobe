@@ -1,6 +1,6 @@
-// Tujuan: Mengotomatisasi peramban Chromium (Headless) untuk mengambil tangkapan layar UI.
+// Tujuan: Mengotomatisasi peramban Chromium (Headless) untuk mengambil tangkapan layar UI, dilengkapi dengan DNS SSRF protection.
 // Caller: src/ai/tools/systemTools.ts
-// Dependensi: puppeteer, path, fs, utils/context
+// Dependensi: puppeteer, path, fs, dns, url, utils/context
 // Main Functions: captureScreenshot, executeBrowserInteraction
 // Side Effects: Launches a headless browser process.
 
@@ -8,8 +8,8 @@ import { getProjectDir } from './context';
 import puppeteer from 'puppeteer';
 import * as path from 'path';
 import * as fs from 'fs';
-
-
+import { promises as dns } from 'dns';
+import { URL } from 'url';
 
 export interface ScreenshotResult {
   base64Data: string;
@@ -46,9 +46,31 @@ export async function executeBrowserInteraction(
 
   // SSRF Protection
   if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
-    const blockedDomains = ['localhost', '127.0.0.1', '169.254.169.254', '0.0.0.0', '::1', 'metadata.google.internal', '100.100.100.200'];
-    if (blockedDomains.some(d => targetUrl.includes(d)) || targetUrl.match(/https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
-      throw new Error('SSRF Protection: Access to private/local networks is blocked.');
+    try {
+      const parsedUrl = new URL(targetUrl);
+      const hostname = parsedUrl.hostname;
+      
+      const ips: string[] = [];
+      try {
+        const addresses = await dns.lookup(hostname, { all: true });
+        addresses.forEach(a => ips.push(a.address));
+      } catch (dnsErr) {
+        // DNS failed or unresolved, continue but check the raw hostname string
+      }
+      ips.push(hostname);
+
+      const blockedDomains = ['localhost', '127.0.0.1', '169.254.169.254', '0.0.0.0', '::1', 'metadata.google.internal', '100.100.100.200'];
+      
+      for (const ip of ips) {
+        if (blockedDomains.some(d => ip.includes(d)) || ip.match(/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
+          throw new Error('SSRF Protection: Access to private/local networks is blocked.');
+        }
+      }
+    } catch (err: any) {
+      if (err.message.includes('SSRF Protection')) {
+        throw err;
+      }
+      throw new Error(`SSRF Protection: Invalid URL. ${err.message}`);
     }
   }
 

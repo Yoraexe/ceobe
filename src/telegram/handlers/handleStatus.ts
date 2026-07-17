@@ -1,3 +1,9 @@
+// Tujuan: Menangani perintah bot Telegram '/status' dan '/mode' untuk mengubah mode eksekusi aktif (otonom/ask) secara remote.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api, telegram/sessionManager, utils/context, telegram/messageQueue, utils/modeManager
+// Main Functions: handleStatusCommand, handleModeCommand
+// Side Effects: Mengubah konfigurasi mode eksekusi aktif pada proyek target dan mengirim pesan konfirmasi ke Telegram.
+
 import TelegramBot from 'node-telegram-bot-api';
 import { getActiveSession } from '../sessionManager';
 import { executionContext } from '../../utils/context';

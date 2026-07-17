@@ -1,3 +1,9 @@
+// Tujuan: Mengelola berkas status sesi aktif (.ceobe/sessions.json) bagi pengguna bot Telegram untuk pelacakan multi-project.
+// Caller: src/telegram/telegramDaemon.ts, src/telegram/handlers/*
+// Dependensi: fs, path, os, utils/projectRegistry
+// Main Functions: getActiveSession, switchSession, sessionStore
+// Side Effects: Membaca/menulis berkas sessions.json di home directory target.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

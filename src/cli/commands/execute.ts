@@ -1,3 +1,9 @@
+// Tujuan: Mendaftarkan perintah CLI 'ceobe execute' untuk mengeksekusi rencana tugas (task.md) hasil audit.
+// Caller: src/index.ts
+// Dependensi: commander, fs, path, chalk, ai/executor, ai/planner, ui/banner, utils/context, utils/stateManager, utils/modeManager, cli/utils/sandbox
+// Main Functions: registerExecuteCommand
+// Side Effects: Mengeksekusi penulisan kode proyek dan pemanggilan tool eksternal.
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

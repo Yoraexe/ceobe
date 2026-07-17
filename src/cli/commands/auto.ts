@@ -1,3 +1,9 @@
+// Tujuan: Mendaftarkan perintah CLI 'ceobe auto' untuk menjalankan loop otonom penuh (plan -> audit -> execute).
+// Caller: src/index.ts
+// Dependensi: commander, supervisor, ui/banner, cli/utils/fileResolver, cli/utils/sandbox
+// Main Functions: registerAutoCommand
+// Side Effects: Memicu proses otonom AI di direktori proyek target.
+
 import { Command } from 'commander';
 import { runAutonomousLoop } from '../../ai/supervisor';
 import { printBanner, printError } from '../../ui/banner';

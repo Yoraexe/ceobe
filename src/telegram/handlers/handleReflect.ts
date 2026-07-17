@@ -1,3 +1,9 @@
+// Tujuan: Menangani perintah bot Telegram '/reflect' untuk memicu analisis log eksekusi dan pembuatan draf skill secara asinkron.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api, ai/reflectiveAnalyzer, telegram/sessionManager
+// Main Functions: handleReflectCommand
+// Side Effects: Memicu analisis log eksekusi AI dan mengirim laporan/respons ke pengguna di Telegram.
+
 import TelegramBot from 'node-telegram-bot-api';
 import { analyzeExecutionLog } from '../../ai/reflectiveAnalyzer';
 import { getActiveSession } from '../sessionManager';

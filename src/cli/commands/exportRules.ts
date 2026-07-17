@@ -1,3 +1,9 @@
+// Tujuan: Mendaftarkan perintah CLI 'ceobe export-rules' untuk mengekspor aturan rekayasa Ceobe ke konfigurasi lokal IDE (Cursor, Windsurf, RooCode, Zed).
+// Caller: src/index.ts
+// Dependensi: commander, fs, path, chalk, utils/context
+// Main Functions: registerExportRulesCommand
+// Side Effects: Menulis berkas aturan konfigurasi asisten ke dalam folder tersembunyi proyek (.cursor, .windsurf, .clinerules, dll.).
+
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';

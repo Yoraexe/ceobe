@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan fungsi pembungkus retry (withRetry) dengan pola exponential backoff dan sensor kebocoran kunci API.
+// Caller: Provider adapters (anthropic, gemini, dll.)
+// Dependensi: chalk, utils/context
+// Main Functions: withRetry, sanitizeError
+// Side Effects: Tidak ada.
+
 import chalk from 'chalk';
 import { log } from './context';
 

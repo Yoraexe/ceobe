@@ -1,3 +1,9 @@
+// Tujuan: Menangani perintah bot Telegram '/worktree' untuk mengaktifkan atau menonaktifkan penggunaan Git worktree terisolasi.
+// Caller: src/telegram/telegramDaemon.ts
+// Dependensi: node-telegram-bot-api, utils/modeManager
+// Main Functions: handleWorktreeCommand
+// Side Effects: Mengubah status konfigurasi mode Git worktree lokal dan mengirim pesan pemberitahuan ke Telegram.
+
 import TelegramBot from 'node-telegram-bot-api';
 import { setWorktreeMode, getWorktreeMode } from '../../utils/modeManager';
 

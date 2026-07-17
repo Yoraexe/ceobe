@@ -1,3 +1,9 @@
+// Tujuan: Mendefinisikan skema API keys dan kredensial yang dibutuhkan oleh berbagai AI providers.
+// Caller: src/utils/keyManager.ts, src/cli/utils/keyWizard.ts
+// Dependensi: -
+// Main Functions: KEY_DEFINITIONS, getRequiredKeyForActiveProviders, findKeyDef
+// Side Effects: Tidak ada.
+
 export interface KeyDefinition {
   envKey: string;        // The actual env var name (e.g. GEMINI_API_KEY)
   provider: string;      // Friendly provider slug (e.g. gemini)

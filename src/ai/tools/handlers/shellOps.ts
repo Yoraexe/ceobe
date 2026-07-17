@@ -36,7 +36,7 @@ function wrapInSandbox(cmd: string): string {
 
 function isCommandAllowed(cmd: string): boolean {
   if (cmd.includes('`') || cmd.includes('$(') || cmd.includes('<') || cmd.includes('>') || cmd.includes('|')) return false; // Block command substitution, redirections, and pipes
-  if (cmd.includes('--exec') || cmd.includes('-exec') || cmd.includes('core.editor')) return false; // Block argument injections
+  if (cmd.includes('core.editor') || cmd.includes('core.pager')) return false; // Block Git override configurations in the raw command
   if (/(?<!&)&(?!&)/.test(cmd)) return false; // Block background execution but allow &&
 
   const allowedPrefixes = [
@@ -47,8 +47,6 @@ function isCommandAllowed(cmd: string): boolean {
     'git log', 'git diff', 'git stash', 'git branch', 'git checkout ', 
     'git rm ', 'git mv ', 'git clone ', 'git fetch', 'git reset '
   ];
-  // Explicitly block shell-escape patterns within whitelisted tools
-  if (cmd.includes('npm exec') || cmd.includes('npx -c') || cmd.includes('node -e') || cmd.includes('node --eval') || cmd.includes('node --print')) return false;
 
   const segments = cmd.split(/(?:&&|\|\||;|\||\n|\r)/).map(s => s.trim()).filter(s => s.length > 0);
   
@@ -58,6 +56,28 @@ function isCommandAllowed(cmd: string): boolean {
        return segment === trimmed || segment.startsWith(trimmed + ' ');
      }); // Fix M-16: Prevent 'ls-evil' bypassing 'ls' whitelist
      if (!segmentAllowed) return false;
+
+     // Robust token-based verification to block shell escapes
+     const tokens = segment.match(/"[^"]*"|'[^']*'|\S+/g) || [];
+     const cleanTokens = tokens.map(t => {
+       if (t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1);
+       if (t.startsWith("'") && t.endsWith("'")) return t.slice(1, -1);
+       return t;
+     });
+
+     const blockedExactTokens = new Set([
+       '-c', '-C', '-r', '-e', '--eval', '--print', '--require', '--import',
+       '--pager', '--tool', '--extcmd', '--exec-path', '--config', 'difftool', 'mergetool'
+     ]);
+     
+     for (const token of cleanTokens) {
+        if (blockedExactTokens.has(token)) {
+           return false;
+        }
+        if (token.includes('core.editor') || token.includes('core.pager') || token.includes('npm exec') || token.includes('npx -c') || token.includes('node -e') || token.includes('node --eval') || token.includes('node --print')) {
+           return false;
+        }
+     }
   }
   return true;
 }

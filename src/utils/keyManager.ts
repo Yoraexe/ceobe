@@ -1,3 +1,9 @@
+// Tujuan: Mengelola berkas penyimpanan API keys lokal (keys.json) untuk Ceobe CLI.
+// Caller: src/cli/commands/system/keyCmd.ts, src/telegram/telegramDaemon.ts, src/cli/utils/keyWizard.ts
+// Dependensi: fs, path, os, utils/keyDefinitions
+// Main Functions: readAllKeys, setKey, getKeysStorePath
+// Side Effects: Membaca/menulis berkas keys.json di home directory target.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

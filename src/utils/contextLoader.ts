@@ -1,3 +1,9 @@
+// Tujuan: Memuat aturan Ceobe (ceobe-rules.md), draf template markdown, dan skill yang relevan dari repositori lokal.
+// Caller: src/ai/utils/promptBuilder.ts, src/cli/commands/plan.ts
+// Dependensi: fs, path, config/env, utils/context, ai/pentest/pentestSkillBridge
+// Main Functions: readCeobeRules, readTemplate, readSpecificSkills, getAvailableSkills
+// Side Effects: Membaca sistem berkas (file read) pada folder aturan, template, dan skill.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { env } from '../config/env';

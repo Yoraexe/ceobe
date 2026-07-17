@@ -1,3 +1,9 @@
+// Tujuan: Menyediakan antarmuka terminal interaktif (wizard) untuk mengatur dan menampilkan API keys.
+// Caller: src/cli/commands/system/keyCmd.ts
+// Dependensi: chalk, readline, utils/keyManager
+// Main Functions: printKeyTable, runKeySetupWizard, maskKey
+// Side Effects: Berinteraksi dengan input/output terminal. Menulis kunci baru ke berkas keys.json.
+
 import chalk from 'chalk';
 import * as readline from 'readline';
 import { 
