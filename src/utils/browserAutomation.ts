@@ -1,10 +1,10 @@
-import { getProjectDir } from './context';
 // Tujuan: Mengotomatisasi peramban Chromium (Headless) untuk mengambil tangkapan layar UI.
 // Caller: src/ai/tools/systemTools.ts
-// Dependensi: puppeteer, path, fs
-// Main Functions: captureScreenshot
+// Dependensi: puppeteer, path, fs, utils/context
+// Main Functions: captureScreenshot, executeBrowserInteraction
 // Side Effects: Launches a headless browser process.
 
+import { getProjectDir } from './context';
 import puppeteer from 'puppeteer';
 import * as path from 'path';
 import * as fs from 'fs';

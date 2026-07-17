@@ -8,7 +8,6 @@ import { registerExecuteCommand } from './cli/commands/execute';
 import { registerSystemCommands } from './cli/commands/system';
 import { registerExportRulesCommand } from './cli/commands/exportRules';
 import { registerPentestCommand } from './cli/commands/pentest';
-import { registerMcpCommand } from './cli/commands/mcp';
 
 // Module: src/index.ts
 // Tujuan: Main entrypoint defining CLI commands and orchestrating autonomous workflows.
@@ -33,7 +32,6 @@ registerExecuteCommand(program);
 registerSystemCommands(program);
 registerExportRulesCommand(program);
 registerPentestCommand(program);
-registerMcpCommand(program);
 
 // Help & default (no args)
 program

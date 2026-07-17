@@ -57,8 +57,11 @@ export async function readState(): Promise<CeobeState | null> {
   if (cached) return cached;
   
   const statePath = getStateFilePath();
+  if (!fs.existsSync(statePath)) {
+    return null;
+  }
+
   let release: (() => Promise<void>) | undefined;
-  
   try {
     release = await lockfile.lock(statePath, { 
       retries: { retries: 5, minTimeout: 50, maxTimeout: 500 },

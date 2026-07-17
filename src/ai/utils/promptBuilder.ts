@@ -1,4 +1,13 @@
+// Tujuan: Membangun instruksi sistem dan prompt terstruktur untuk berbagai fase perencanaan Ceobe (BRD, Desain, Arsitektur, Implementasi, DevOps).
+// Caller: src/ai/planner.ts, src/mcp/server.ts
+// Dependensi: fs, path, utils/context, utils/contextLoader
+// Main Functions: buildSkillRouterPrompt, buildBRDPrompt, buildDesignPrompt, buildArchitecturePrompt, buildImplementationPrompt, buildDevOpsPrompt, buildCodebaseAuditPrompt
+// Side Effects: Membaca template dari sistem dan berkas arsitektur lokal.
+
+import * as fs from 'fs';
+import * as path from 'path';
 import { readTemplate, readCeobeRules, readSpecificSkills, getAvailableSkills } from '../../utils/contextLoader';
+import { getProjectDir } from '../../utils/context';
 
 export function buildSkillRouterPrompt(taskDescription: string): string {
   const availableSkills = getAvailableSkills();
@@ -19,10 +28,6 @@ Output ONLY a raw, comma-separated list of the exact skill names required. If no
 Example: "cost-reducer, scalability, frontend-design"
 NO markdown, NO greetings, NO extra text.`;
 }
-
-import * as fs from 'fs';
-import * as path from 'path';
-import { getProjectDir } from '../../utils/context';
 
 function extractADRSection(): string {
   try {

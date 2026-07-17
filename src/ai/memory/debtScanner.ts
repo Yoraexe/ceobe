@@ -1,3 +1,9 @@
+// Tujuan: Memindai codebase secara rekursif untuk mencari komentar technical debt khusus (ponytail: atau ceobe:).
+// Caller: src/mcp/server.ts, cli commands
+// Dependensi: path, fs, utils/context
+// Main Functions: scanTechnicalDebt
+// Side Effects: Membaca filesystem di bawah project directory.
+
 import * as path from 'path';
 import * as fs from 'fs';
 import { getProjectDir } from '../../utils/context';

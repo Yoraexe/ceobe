@@ -1,3 +1,9 @@
+// Tujuan: Menganalisis berkas log eksekusi (.ceobe/execution.log) untuk mengevaluasi efisiensi biaya/token dan merancang draf skill baru secara reflektif.
+// Caller: cli commands, telegram handlers
+// Dependensi: fs, path, chalk, ora, utils/context, ai/providers/router, utils/costTracker
+// Main Functions: analyzeExecutionLog
+// Side Effects: Membaca berkas log eksekusi dan menulis draf skill baru ke folder `skills/`.
+
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';

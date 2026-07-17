@@ -1,7 +1,14 @@
+// Tujuan: Menyediakan server Model Context Protocol (MCP) terpadu berbasis SDK stdio untuk perkakas rekayasa (engineering) dan pengujian penetrasi (pentest).
+// Caller: src/cli/commands/system/mcpCmd.ts (via command `ceobe mcp`)
+// Dependensi: @modelcontextprotocol/sdk, zod, scanTechnicalDebt, getProjectASTSummary, buildCodebaseAuditPrompt, checkToolInstalled, runPentestLoop
+// Main Functions: runMcpServer
+// Side Effects: Berkomunikasi via stdin/stdout untuk menangani permintaan RPC. Membaca filesystem dan mengeksekusi pipeline pentest/audit.
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { z } from 'zod';
 
 import { scanTechnicalDebt } from '../ai/memory/debtScanner';
 import { getProjectASTSummary } from '../ai/memory/indexer';
@@ -9,11 +16,13 @@ import { buildCodebaseAuditPrompt } from '../ai/utils/promptBuilder';
 import { createProviderAdapter } from '../ai/providers/router';
 import { env } from '../config/env';
 import { checkBudget } from '../utils/costTracker';
+import { checkToolInstalled } from '../ai/pentest/toolsCatalog';
+import { runPentestLoop } from '../ai/pentest/pentestSupervisor';
 
 export async function runMcpServer() {
   const server = new McpServer({
     name: 'ceobe-mcp',
-    version: '1.0.0'
+    version: '1.15.0'
   });
 
   // Expose Ceobe's Engineering Rules as a Prompt
@@ -89,6 +98,42 @@ export async function runMcpServer() {
       } catch (err: any) {
         return { content: [{ type: 'text', text: `Error during trim: ${err.message}` }], isError: true };
       }
+    }
+  );
+
+  // Tool 4: Check Security Tool Status
+  server.tool(
+    'check_tool_status',
+    'Check if a security tool (e.g. nmap, sqlmap) is installed on the host system.',
+    {
+      toolName: z.string().describe('Name of the security tool to verify.')
+    },
+    async ({ toolName }) => {
+      const isInstalled = checkToolInstalled(toolName);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ tool: toolName, installed: isInstalled }) }]
+      };
+    }
+  );
+
+  // Tool 5: Run Pentest Loop
+  server.tool(
+    'run_pentest',
+    'Start an autonomous penetration testing session on a target.',
+    {
+      target: z.string().describe('IP address or domain scope target.'),
+      mode: z.enum(['auto', 'ctf', 'team', 'bug-bounty']).optional().describe('Attack execution engagement mode.')
+    },
+    async ({ target, mode }) => {
+      console.error(`[MCP Tool] Launching pentest on: ${target} (Mode: ${mode || 'auto'})`);
+      
+      const validModes = ['auto', 'ctf', 'team', 'bug-bounty', 'red-team', 'blue-team', 'offensive', 'grey-hat', 'forensic', 'reverse-engineering', 'mobile-pentest'];
+      const safeMode = mode && validModes.includes(String(mode)) ? String(mode) : 'auto';
+
+      await runPentestLoop(target, safeMode as any, undefined, false);
+      return {
+        content: [{ type: 'text', text: `Successfully executed pentest loop on target: ${target}` }]
+      };
     }
   );
 

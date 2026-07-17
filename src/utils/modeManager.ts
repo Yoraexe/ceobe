@@ -1,12 +1,10 @@
-import { getProjectDir, executionContext } from './context';
-// Module: src/utils/modeManager.ts
-// Purpose: Manages Ceobe's active operation mode (autonomous or ask).
-//          Mode is persisted in .ceobe/config.json inside the target project.
-// Caller: src/index.ts, src/ai/executor.ts
-// Dependencies: fs, path, env, readline, chalk
-// Side Effects: Read/write .ceobe/config.json
-// v1.8.0: Tambahan ConfirmationBridge untuk mendelegasikan prompt ke UI lain (Telegram).
+// Tujuan: Mengelola mode operasi aktif Ceobe (otonom atau bertanya) dan jembatan konfirmasi eksternal (HITL).
+// Caller: src/index.ts, src/ai/executor.ts, telegram daemon
+// Dependensi: fs, path, readline, chalk, utils/context
+// Main Functions: readConfig, writeConfig, confirmToolCall, getActiveMode, setMode
+// Side Effects: Membaca/menulis file konfigurasi .ceobe/config.json. Membuka interface readline atau memicu konfirmasi Telegram.
 
+import { getProjectDir, executionContext } from './context';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
