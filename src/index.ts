@@ -48,12 +48,12 @@ program
   .description('Tampilkan panduan lengkap Ceobe')
   .action(async () => {
     await printAnimatedBanner();
-    printHelp();
+    printHelp(true);
   });
 
 program.action(async () => {
   await printAnimatedBanner();
-  printHelp();
+  printHelp(true);
 });
 
 // Parse args

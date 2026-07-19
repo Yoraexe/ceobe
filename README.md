@@ -11,7 +11,7 @@
 
 **Autonomous AI Engineering Orchestrator**
 
-`v1.15.0` · `Three Brains Architecture` · `Model-Agnostic` · `MIT`
+`v1.16.0` · `Three Brains Architecture` · `Model-Agnostic` · `MIT`
 
 [![npm](https://img.shields.io/npm/v/ceobe-mastery-cli?color=4FC3D9&label=npm&style=flat-square)](https://www.npmjs.com/package/ceobe-mastery-cli)
 [![license](https://img.shields.io/github/license/Yoraexe/ceobe?color=6DCEA8&style=flat-square)](LICENSE)
@@ -136,6 +136,7 @@ Optional Cloudflare AI Gateway routing: set `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLAR
 ```bash
 ceobe auto [desc]          # Full pipeline: plan → audit → execute
 ceobe plan [desc]          # Generate plan only (no execution)
+ceobe audit                # QA-review the generated plan against engineering rules
 ceobe execute              # Execute an existing approved plan
 ceobe export-rules         # Sync rules to Cursor / Windsurf / Cline / Antigravity
 ```
@@ -185,6 +186,7 @@ ceobe log [-n <lines>]     # View execution log
 ceobe daemon --telegram    # Start remote Telegram bot
 ceobe mcp                  # Launch MCP stdio server (for AI IDE integrations)
 ceobe skill list           # Browse all 288 available skills
+ceobe templates            # Manage project document templates
 ```
 
 ---
@@ -234,11 +236,19 @@ ceobe daemon --telegram
 | `/addproject <name> <path>` | Register a workspace |
 | `/cd <name>` | Switch active workspace |
 | `/mode <ask\|autonomous>` | Toggle HITL / full-auto |
+| `/auto` | Shortcut — set mode to autonomous |
+| `/ask` | Shortcut — set mode to ask |
 | `/status` | Pipeline status + queue |
 | `/cost` | Live token usage & cost |
 | `/logs` | Tail last 50 execution lines |
 | `/read <file>` | Read a project file remotely |
+| `/index` | Build semantic memory index (RAG) |
+| `/doctor` | Run system diagnostics |
+| `/reflect` | AI self-reflection on logs |
+| `/reset` | Reset pipeline state |
+| `/worktree` | Toggle worktree isolation mode |
 | `/cancel` | Clear task queue |
+| `/help` | Show command list |
 | `<any message>` | Treated as a task instruction |
 
 ---
@@ -314,7 +324,7 @@ Ceobe ships with 288 specialized skill files that are dynamically injected into 
 
 | Category | Count | Examples |
 |---|---|---|
-| **Security / CTF** | ~80 | `ctf-pwn-heap`, `ctf-crypto-rsa`, `ctf-reverse-kernel` |
+| **Security / CTF** | ~80 | `ctf-pwn-heap`, `ctf-crypto-rsa`, `ctf-pwn-kernel` |
 | **Vulnerability** | ~50 | `vuln-sqli`, `vuln-jwt`, `vuln-ssrf`, `vuln-llm-attacks` |
 | **Recon** | ~12 | `recon-subdomain`, `recon-dorking`, `recon-secrets` |
 | **Payloads** | 13 | `payload-xss`, `payload-sqli`, `payload-xxe` |
@@ -323,7 +333,7 @@ Ceobe ships with 288 specialized skill files that are dynamically injected into 
 | **Mobile** | 5 | `flutter`, `react-native`, `mobile-android`, `mobile-ios` |
 | **Backend** | 8 | `golang`, `python-backend`, `elysia`, `hono` |
 | **Database** | 4 | `prisma-orm`, `drizzle`, `database-architect` |
-| **DevOps** | 5 | `tech-docker`, `tech-kubernetes`, `deployment-ops` |
+| **DevOps** | 7 | `tech-docker`, `tech-kubernetes`, `deployment-ops`, `tech-cicd` |
 | **Testing** | 6 | `vitest`, `bdd-testing`, `visual-qa` |
 
 ```bash
@@ -421,6 +431,7 @@ ceobe export-rules
 | `full-text-index.json` | BM25 full-text index |
 | `dependency-graph.json` | Module dependency map |
 | `plugins/` | Custom plugin directory |
+| `skills/` | Custom project-local skills |
 
 ---
 

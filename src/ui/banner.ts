@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 import packageJson from '../../package.json';
 
-export const VERSION = packageJson.version || '1.15.0';
+export const VERSION = packageJson.version || '1.16.0';
 
 // ─────────────────────────────────────────────────────────────
 // Palette — Satu warna utama + aksen abu
@@ -271,8 +271,8 @@ export { setMode, printModeBadge } from '../utils/modeManager';
 // Help screen  — complete, polished
 // ─────────────────────────────────────────────────────────────
 
-export function printHelp(): void {
-  printBanner();
+export function printHelp(skipBanner = false): void {
+  if (!skipBanner) printBanner();
 
   const row = (cmd: string, arg: string, desc: string) =>
     `  ${C.accent(cmd.padEnd(18))} ${C.muted(arg.padEnd(24))} ${C.dim(desc)}`;
@@ -312,7 +312,7 @@ export function printHelp(): void {
   console.log(row('daemon',         '--telegram',          'Start Ceobe as a remote Telegram bot'));
   console.log(row('mcp',            '',                    'Launch MCP stdio server (for AI IDE integrations)'));
   console.log(row('skill list',     '',                    'Browse all 288 available skills'));
-  console.log(row('template',       '',                    'Manage project document templates'));
+  console.log(row('templates',       '',                    'Manage project document templates'));
 
   // ── PROVIDERS ─────────────────────────────────────────────
   printSection('AI PROVIDERS');
@@ -342,12 +342,20 @@ export function printHelp(): void {
     ['/addproject <n> <path>',   'Register a new workspace'],
     ['/cd <name>',               'Switch active workspace'],
     ['/mode <ask|autonomous>',   'Toggle HITL / full-auto'],
+    ['/auto',                    'Shortcut — set mode to autonomous'],
+    ['/ask',                     'Shortcut — set mode to ask'],
     ['/status',                  'Pipeline status + queue'],
     ['/cost',                    'Live token usage & cost'],
     ['/logs',                    'Tail last 50 execution lines'],
     ['/read <file>',             'Read a project file remotely'],
-    ['/cancel',                  'Clear task queue'],
+    ['/index',                   'Build semantic memory index (RAG)'],
+    ['/doctor',                  'Run system diagnostics'],
     ['/reflect',                 'AI self-reflection on logs'],
+    ['/reset',                   'Reset pipeline state'],
+    ['/worktree',                'Toggle worktree isolation mode'],
+    ['/cancel',                  'Clear task queue'],
+    ['/clear',                   'Clear message context'],
+    ['/help',                    'Show command list'],
     ['<any message>',            'Treated as a task instruction'],
   ];
   for (const [cmd, desc] of tgCmds) {

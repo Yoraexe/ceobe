@@ -23,8 +23,8 @@ export async function runMcpServer() {
   process.env.CEOBE_MCP_MODE = 'true';
 
   const server = new McpServer({
-    name: 'ceobe-mcp',
-    version: '1.15.0'
+    name: 'ceobe-mcp-server',
+    version: '1.16.0'
   });
 
   // Expose Ceobe's Engineering Rules as a Prompt
