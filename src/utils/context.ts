@@ -46,8 +46,12 @@ function logContext(msg: string, bypassIntercept = false): void {
   if (ctx && ctx.logger && !bypassIntercept) {
     ctx.logger(msg);
   } else {
-    // Write directly to stdout to bypass any global console monkey-patch
-    process.stdout.write(msg + '\n');
+    if (process.env.CEOBE_MCP_MODE === 'true') {
+      process.stderr.write(msg + '\n');
+    } else {
+      // Write directly to stdout to bypass any global console monkey-patch
+      process.stdout.write(msg + '\n');
+    }
   }
 }
 

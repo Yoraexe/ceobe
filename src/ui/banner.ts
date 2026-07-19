@@ -1,84 +1,212 @@
-// Tujuan: Membantu merender elemen UI terminal seperti banner, indikator langkah, header bagian, dan keluaran bergaya.
+// Tujuan: Merender elemen UI terminal Ceobe — banner animasi, progress bar, section header, dan pesan bergaya.
 // Caller: src/index.ts dan berbagai file perintah CLI.
 // Dependensi: chalk, path, utils/context.
-// Main Functions: printBanner, printSection, printStep, ok, warn, fail, info, hint, printNextStep, printError, printHelp.
-// Side Effects: Menulis pesan berformat secara langsung ke standard output (console.log).
-// v1.0.0: Terminal UI Helpers.
+// Main Functions: printBanner, printBannerSync, printSection, printStep, ok, warn, fail, info, hint, printNextStep, printError, printHelp.
+// Side Effects: Menulis output berformat ke stdout. Animasi menggunakan setInterval/setTimeout.
+// v2.0.0: Minimalist + Animated Terminal UI Redesign.
 
 import { getProjectDir } from '../utils/context';
-
 import chalk from 'chalk';
 import * as path from 'path';
-
 import packageJson from '../../package.json';
+
 export const VERSION = packageJson.version || '1.15.0';
 
 // ─────────────────────────────────────────────────────────────
-// Banner
+// Palette — Satu warna utama + aksen abu
 // ─────────────────────────────────────────────────────────────
 
-export function printBanner(): void {
-  const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER;
-  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER;
+const C = {
+  primary:   chalk.hex('#7ECFE0'),   // soft cyan
+  accent:    chalk.hex('#4FC3D9'),   // bright cyan
+  dim:       chalk.hex('#3D5A66'),   // dark slate
+  muted:     chalk.hex('#566D75'),   // muted gray-blue
+  white:     chalk.hex('#E8F4F7'),   // off-white
+  green:     chalk.hex('#6DCEA8'),   // soft green
+  yellow:    chalk.hex('#F5C866'),   // warm amber
+  red:       chalk.hex('#F07070'),   // soft red
+  purple:    chalk.hex('#A78FD4'),   // soft purple
+  bg:        chalk.bgHex('#0D1B20'), // dark bg (for badges)
+};
 
-  const plannerProvider = rawPlanner || rawExecutor;
+// ─────────────────────────────────────────────────────────────
+// Animated Boot Sequence
+// ─────────────────────────────────────────────────────────────
+
+const LOGO_LINES = [
+  '  ░█████╗░███████╗░█████╗░██████╗░███████╗',
+  '  ██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝',
+  '  ██║░░╚═╝█████╗░░██║░░██║██████╦╝█████╗░░',
+  '  ██║░░██╗██╔══╝░░██║░░██║██╔══██╗██╔══╝░░',
+  '  ╚█████╔╝███████╗╚█████╔╝██████╦╝███████╗',
+  '  ░╚════╝░╚══════╝░╚════╝░╚═════╝░╚══════╝',
+];
+
+const TAGLINE   = 'Autonomous AI Engineering Orchestrator';
+const SUB_TAG   = 'Three Brains · 288 Skills · Model-Agnostic';
+
+/**
+ * Animasi typewriter satu baris ke stdout (sync sleep via busy-wait).
+ * Digunakan hanya saat banner pertama kali tampil.
+ */
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { /* busy-wait — intentional for CLI animation */ }
+}
+
+function writeChar(char: string, color: (s: string) => string = (s) => s): void {
+  process.stdout.write(color(char));
+}
+
+/**
+ * Banner animasi — cocok dipanggil sekali di entry point.
+ * Gunakan printBanner() untuk semua command biasa (non-animasi, instant).
+ */
+export async function printAnimatedBanner(): Promise<void> {
+  console.clear();
+  console.log('');
+
+  // ── Phase 1: Render logo line by line dengan fade-in ──────
+  for (let i = 0; i < LOGO_LINES.length; i++) {
+    const line = LOGO_LINES[i];
+    // Gradient efek: baris atas lebih dim, bawah lebih terang
+    const brightness = ['#2A6A7A', '#3A8A9A', '#4AACBE', '#5ABECE', '#6ACCDB', '#7ECFE0'];
+    const color = chalk.hex(brightness[i] || '#7ECFE0').bold;
+    console.log(color(line));
+    sleepSync(55);
+  }
+
+  console.log('');
+
+  // ── Phase 2: Typewriter tagline ───────────────────────────
+  process.stdout.write('  ');
+  for (const char of TAGLINE) {
+    writeChar(char, C.white.bold);
+    sleepSync(18);
+  }
+  process.stdout.write('\n');
+
+  // ── Phase 3: Sub-tag dim ──────────────────────────────────
+  process.stdout.write('  ');
+  for (const char of SUB_TAG) {
+    writeChar(char, C.muted);
+    sleepSync(10);
+  }
+  process.stdout.write('\n');
+
+  // ── Phase 4: Separator "breathing" ────────────────────────
+  console.log('');
+  const sep = '  ' + '─'.repeat(44);
+  for (let i = 0; i < sep.length; i++) {
+    writeChar(sep[i], C.dim);
+    sleepSync(4);
+  }
+  process.stdout.write('\n');
+
+  // ── Phase 5: Provider info + version ──────────────────────
+  _printProviderLine();
+  console.log('');
+}
+
+/**
+ * Banner INSTANT — digunakan oleh semua command (status, key, dll.)
+ * Tidak ada animasi, langsung render.
+ */
+export function printBanner(): void {
+  const rawPlanner  = process.env.CEOBE_PLANNER_PROVIDER;
+  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER;
+  const plannerProvider  = rawPlanner || rawExecutor;
   const executorProvider = rawExecutor || rawPlanner;
 
   let projectName = 'default';
   try {
-    const projectDir = getProjectDir();
-    projectName = path.basename(projectDir);
-  } catch (e) {
-    // Graceful fallback if getProjectDir throws outside active context
-  }
-
-  const plannerDisplay = plannerProvider ? chalk.cyan(plannerProvider.toUpperCase()) : chalk.yellow('(NOT SET)');
-  const executorDisplay = executorProvider ? chalk.cyan(executorProvider.toUpperCase()) : chalk.yellow('(NOT SET)');
+    projectName = path.basename(getProjectDir());
+  } catch { /* graceful */ }
 
   console.log('');
-  console.log(chalk.cyan.bold('  ██████╗███████╗ ██████╗ ██████╗ ███████╗'));
-  console.log(chalk.cyan.bold(' ██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔════╝'));
-  console.log(chalk.cyan.bold(' ██║     █████╗  ██║   ██║██████╔╝█████╗  '));
-  console.log(chalk.cyan.bold(' ██║     ██╔══╝  ██║   ██║██╔══██╗██╔══╝  '));
-  console.log(chalk.cyan.bold(' ╚██████╗███████╗╚██████╔╝██████╔╝███████╗'));
-  console.log(chalk.cyan.bold('  ╚═════╝╚══════╝ ╚═════╝ ╚═════╝ ╚══════╝'));
-  console.log('');
+  // Compact wordmark — single line, bold
   console.log(
-    chalk.gray('  Autonomous AI Engineering Orchestrator') +
-    chalk.dim(` · v${VERSION} [Mastery Audit Edition]`)
+    C.accent.bold('  ◈ CEOBE') +
+    C.dim(` v${VERSION}`) +
+    '  ' +
+    C.muted('─') +
+    '  ' +
+    C.muted(TAGLINE)
   );
+
+  // Separator
+  console.log(C.dim('  ' + '─'.repeat(54)));
+
+  // Provider status
+  const pl = plannerProvider  ? C.primary(plannerProvider.toUpperCase())  : C.yellow('(unset)');
+  const ex = executorProvider ? C.primary(executorProvider.toUpperCase()) : C.yellow('(unset)');
+
   console.log(
-    chalk.dim(`  🧠 Planner: ${plannerDisplay}`) +
-    chalk.dim(`  ·  ⚙️  Executor: ${executorDisplay}`) +
-    chalk.dim(`  ·  📂 ${chalk.white(projectName)}`)
+    C.muted('  𝙿 ') + pl +
+    C.muted('  ·  𝙴 ') + ex +
+    C.muted('  ·  ') +
+    C.dim('📂 ' + projectName)
   );
+
   if (!plannerProvider || !executorProvider) {
-    console.log(chalk.yellow(`\n  ⚠️  Provider belum dikonfigurasi. Jalankan ${chalk.bold('ceobe setup')} atau ${chalk.bold('ceobe key set planner-provider <name>')}`));
+    console.log(
+      C.yellow(`\n  ⚡ Provider belum diset — jalankan `) +
+      C.accent.bold('ceobe setup')
+    );
   }
   console.log('');
+}
+
+function _printProviderLine(): void {
+  const rawPlanner  = process.env.CEOBE_PLANNER_PROVIDER;
+  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER;
+  const plannerProvider  = rawPlanner || rawExecutor;
+  const executorProvider = rawExecutor || rawPlanner;
+
+  let projectName = 'default';
+  try { projectName = path.basename(getProjectDir()); } catch { /* ok */ }
+
+  const pl = plannerProvider  ? C.accent(plannerProvider.toUpperCase())  : C.yellow('—');
+  const ex = executorProvider ? C.accent(executorProvider.toUpperCase()) : C.yellow('—');
+
+  console.log(
+    C.muted(`  version `) + C.dim(`v${VERSION}`) +
+    C.muted('  ·  𝙿 ') + pl +
+    C.muted('  𝙴 ') + ex +
+    C.muted('  📂 ') + C.dim(projectName)
+  );
+
+  if (!plannerProvider || !executorProvider) {
+    console.log(C.yellow(`\n  ⚡ Run `) + C.accent.bold('ceobe setup') + C.yellow(' to configure providers'));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
 // Section separator
 // ─────────────────────────────────────────────────────────────
 
-export function printSection(title: string, icon = '◆'): void {
-  const line = '─'.repeat(50);
+export function printSection(title: string, _icon = '◆'): void {
   console.log('');
-  console.log(chalk.bold.cyan(`  ${icon} ${title}`));
-  console.log(chalk.dim(`  ${line}`));
+  console.log(C.accent.bold(`  ▸ ${title}`));
+  console.log(C.dim('  ' + '─'.repeat(48)));
 }
 
 // ─────────────────────────────────────────────────────────────
-// Step progress
+// Step / Progress bar
 // ─────────────────────────────────────────────────────────────
 
 export function printStep(step: number, total: number, label: string): void {
   const filled = '█'.repeat(step);
-  const empty = '░'.repeat(total - step);
-  const pct = Math.round((step / total) * 100);
-  const bar = chalk.cyan(filled) + chalk.dim(empty);
-  console.log(`\n  [${bar}] ${chalk.bold.white(pct + '%')}  ${chalk.gray('Step')} ${chalk.cyan(step + '/' + total)}  ${chalk.white(label)}`);
+  const empty  = '░'.repeat(total - step);
+  const pct    = Math.round((step / total) * 100);
+  const bar    = C.accent(filled) + C.dim(empty);
+  console.log(
+    `\n  [${bar}] ` +
+    C.white.bold(`${pct}%`) +
+    C.muted(`  ${step}/${total}`) +
+    '  ' +
+    C.white(label)
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -86,35 +214,37 @@ export function printStep(step: number, total: number, label: string): void {
 // ─────────────────────────────────────────────────────────────
 
 export function ok(msg: string): void {
-  console.log(chalk.green(`  ✅  ${msg}`));
+  console.log(C.green(`  ✓  ${msg}`));
 }
 
 export function warn(msg: string): void {
-  console.log(chalk.yellow(`  ⚠️   ${msg}`));
+  console.log(C.yellow(`  ▲  ${msg}`));
+}
+
+export function fail(msg: string): void {
+  console.log(C.red(`  ✗  ${msg}`));
 }
 
 export function info(msg: string): void {
-  console.log(chalk.cyan(`  ℹ  ${msg}`));
+  console.log(C.primary(`  ·  ${msg}`));
 }
 
 export function hint(msg: string): void {
-  console.log(chalk.dim(`     → ${msg}`));
+  console.log(C.muted(`     ↳ ${msg}`));
 }
 
 // ─────────────────────────────────────────────────────────────
-// Next-step suggestion box
+// Next-step box  — compact bordered
 // ─────────────────────────────────────────────────────────────
 
 export function printNextStep(label: string, command: string): void {
-  const maxLen = 46;
-  const labelTrunc = label.length > maxLen ? label.substring(0, maxLen - 1) : label;
-  const cmdStr = '$ ' + command;
-  const cmdTrunc = cmdStr.length > maxLen ? cmdStr.substring(0, maxLen - 1) : cmdStr;
+  const W = 48;
+  const pad = (s: string) => s.length >= W ? s.substring(0, W - 1) : s.padEnd(W);
   console.log('');
-  console.log(chalk.bold('  ╔═══ Next Step ════════════════════════════════╗'));
-  console.log(`  ║  ${labelTrunc.padEnd(maxLen)}║`);
-  console.log(`  ║  ${chalk.cyan.bold(cmdTrunc.padEnd(maxLen))}║`);
-  console.log('  ╚══════════════════════════════════════════════╝');
+  console.log(C.dim(`  ┌${'─'.repeat(W + 2)}┐`));
+  console.log(C.dim(`  │ `) + C.muted(pad(label))             + C.dim(' │'));
+  console.log(C.dim(`  │ `) + C.accent.bold(pad('$ ' + command)) + C.dim(' │'));
+  console.log(C.dim(`  └${'─'.repeat(W + 2)}┘`));
   console.log('');
 }
 
@@ -124,100 +254,146 @@ export function printNextStep(label: string, command: string): void {
 
 export function printError(title: string, detail?: string, fix?: string): void {
   console.log('');
-  console.log(chalk.red.bold(`  ✗ ${title}`));
-  if (detail) console.log(chalk.dim(`    ${detail}`));
-  if (fix)    console.log(chalk.yellow(`    Fix: ${fix}`));
+  console.log(C.red(`  ✗ ${title}`));
+  if (detail) console.log(C.muted(`    ${detail}`));
+  if (fix)    console.log(C.yellow(`    → ${fix}`));
   console.log('');
 }
 
 // ─────────────────────────────────────────────────────────────
-// Custom help screen
+// printModeBadge — used by modeCmd
+// ─────────────────────────────────────────────────────────────
+
+// Re-export setMode so callers don't need to import modeManager directly
+export { setMode, printModeBadge } from '../utils/modeManager';
+
+// ─────────────────────────────────────────────────────────────
+// Help screen  — complete, polished
 // ─────────────────────────────────────────────────────────────
 
 export function printHelp(): void {
   printBanner();
 
-  console.log(chalk.bold('  USAGE'));
-  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  console.log(`  ${chalk.cyan('ceobe')} ${chalk.white('<command>')} ${chalk.gray('[options]')}\n`);
+  const row = (cmd: string, arg: string, desc: string) =>
+    `  ${C.accent(cmd.padEnd(18))} ${C.muted(arg.padEnd(24))} ${C.dim(desc)}`;
 
-  const cmds: [string, string, string?][] = [
-    ['🤖  auto',     '"Build a REST API in Go"',        'Full autonomous pipeline (plan→audit→execute)'],
-    ['📋  plan',     '"Landing page with auth"',         'Generate BRD, design, architecture & task plan'],
-    ['🔎  audit',    '',                                 'QA-check the plan before execution'],
-    ['🚀  execute',  '',                                 'Execute the approved task plan'],
-    ['📊  status',   '',                                 'Show pipeline progress & plan files'],
-    ['🧠  index',    '',                                 'Index workspace for semantic memory (RAG)'],
-    ['🩺  doctor',   '',                                 'Diagnose API keys, providers & workspace'],
-    ['🔑  key',      'set/get/list/remove',              'Manage API keys & provider config'],
-    ['🔄  mode',     'autonomous | ask',                 'Switch execution mode'],
-    ['📝  log',      '[-n <lines>]',                    'Show latest execution log'],
-    ['🔃  setup',    '',                                 'Interactive first-time setup wizard'],
-    ['📡  daemon',   '--telegram',                       'Start Ceobe as a remote Telegram bot'],
-    ['💣  reset',    '--yes',                            'Clear all plans and state files'],
+  // ── CORE ──────────────────────────────────────────────────
+  printSection('CORE COMMANDS');
+  console.log(row('auto [desc]',    '[--ask|--feature|--file|--sandbox|--worktree|--creative]', 'Full autonomous pipeline'));
+  console.log(row('plan [desc]',    '[--file <path>]',     'Generate BRD + design + architecture + task plan'));
+  console.log(row('execute',        '',                    'Run the approved task plan'));
+  console.log(row('export-rules',   '',                    'Sync engineering rules to Cursor / Windsurf / Cline'));
+
+  // ── WORKSPACE ─────────────────────────────────────────────
+  printSection('WORKSPACE');
+  console.log(row('status',         '',                    'Show pipeline progress, phases & plan files'));
+  console.log(row('index',          '',                    'Build semantic memory index (RAG)'));
+  console.log(row('trim',           '',                    'Whole-repo bloat scanner — detect over-engineering'));
+  console.log(row('debt',           '',                    'Scan tech-debt markers (// ceobe: / // ponytail:)'));
+  console.log(row('reflect',        '[--auto-skill]',      'Analyze execution logs, auto-generate skill draft'));
+  console.log(row('rollback',       '',                    'Hard-reset to pre-AI git snapshot'));
+  console.log(row('reset',          '--yes',               'Clear all plans & pipeline state'));
+  console.log(row('recon <url>',    '[--depth] [--focus]', 'Dynamic reverse-engineering of a URL'));
+
+  // ── CONFIG ────────────────────────────────────────────────
+  printSection('CONFIGURATION');
+  console.log(row('setup',          '',                    'Interactive first-time setup wizard'));
+  console.log(row('key set',        '<provider> <value>',  'Save an API key or provider config'));
+  console.log(row('key list',       '',                    'Show all keys & active provider config'));
+  console.log(row('key get',        '<provider>',          'Peek at a single key (masked)'));
+  console.log(row('key remove',     '<provider>',          'Delete a stored key'));
+  console.log(row('mode',           '[autonomous|ask]',    'View or change execution mode'));
+  console.log(row('doctor',         '',                    'Diagnose API keys, providers & workspace'));
+
+  // ── ADVANCED ──────────────────────────────────────────────
+  printSection('ADVANCED');
+  console.log(row('benchmark',      '',                    'LLM benchmark — compare accuracy & token efficiency'));
+  console.log(row('log',            '[-n <lines>]',        'View execution log output'));
+  console.log(row('daemon',         '--telegram',          'Start Ceobe as a remote Telegram bot'));
+  console.log(row('mcp',            '',                    'Launch MCP stdio server (for AI IDE integrations)'));
+  console.log(row('skill list',     '',                    'Browse all 288 available skills'));
+  console.log(row('template',       '',                    'Manage project document templates'));
+
+  // ── PROVIDERS ─────────────────────────────────────────────
+  printSection('AI PROVIDERS');
+  const provs: [string, string][] = [
+    ['gemini',   'Google Gemini 2.5 Flash (default)'],
+    ['anthropic','Anthropic Claude (prefix-cache support)'],
+    ['glm',      'Zhipu AI GLM-5.1'],
+    ['kimi',     'Moonshot Kimi-K2'],
+    ['deepseek', 'DeepSeek V3'],
+    ['groq',     'Groq — Llama 3.3 70B'],
+    ['openai',   'OpenAI GPT-4o'],
+    ['qwen',     'Alibaba Qwen-3'],
+    ['together', 'Together AI — Llama 3.1 70B'],
+    ['ollama',   'Ollama — local models (no key needed)'],
   ];
+  for (const [prov, desc] of provs) {
+    console.log(`  ${C.accent(prov.padEnd(12))} ${C.dim(desc)}`);
+  }
+  console.log(C.muted('\n  Each role (planner / executor / qa / embedding) can use a different provider.'));
+  console.log(C.muted('  Custom providers: set CEOBE_PLANNER_BASE_URL + CEOBE_PLANNER_API_KEY'));
 
-  console.log(chalk.bold('  COMMANDS'));
-  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  for (const [cmd, arg, desc] of cmds) {
-    console.log(
-      `  ${chalk.cyan(cmd.padEnd(17))} ${chalk.gray(arg.padEnd(26))} ${desc ? chalk.dim(desc) : ''}`
-    );
+  // ── TELEGRAM ──────────────────────────────────────────────
+  printSection('TELEGRAM DAEMON  (ceobe daemon --telegram)');
+  const tgCmds: [string, string][] = [
+    ['/start',                   'Wake bot & check status'],
+    ['/projects',                'List registered workspaces'],
+    ['/addproject <n> <path>',   'Register a new workspace'],
+    ['/cd <name>',               'Switch active workspace'],
+    ['/mode <ask|autonomous>',   'Toggle HITL / full-auto'],
+    ['/status',                  'Pipeline status + queue'],
+    ['/cost',                    'Live token usage & cost'],
+    ['/logs',                    'Tail last 50 execution lines'],
+    ['/read <file>',             'Read a project file remotely'],
+    ['/cancel',                  'Clear task queue'],
+    ['/reflect',                 'AI self-reflection on logs'],
+    ['<any message>',            'Treated as a task instruction'],
+  ];
+  for (const [cmd, desc] of tgCmds) {
+    console.log(`  ${C.accent(cmd.padEnd(26))} ${C.dim(desc)}`);
   }
 
+  // ── PENTEST (gated behind eunectes unlock) ────────────────
   if (process.env.CEOBE_UNLOCK_PENTEST === 'true') {
-    console.log('');
-    console.log(chalk.bold('  PENTEST MODES (ceobe pentest --mode <mode>)'));
-    console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-    console.log(`  ${chalk.red('auto')}               ${chalk.dim('Auto-detect berdasarkan target')}`);
-    console.log(`  ${chalk.red('bug-bounty')}         ${chalk.dim('HackerOne / Bugcrowd / Intigriti — scope-strict')}`);
-    console.log(`  ${chalk.red('red-team')}           ${chalk.dim('Stealth ops, persistence, lateral movement')}`);
-    console.log(`  ${chalk.red('ctf')}                ${chalk.dim('HackTheBox / TryHackMe / picoCTF — speed-first')}`);
-    console.log(`  ${chalk.red('blue-team')}          ${chalk.dim('Detection, IR, defensive audit')}`);
-    console.log(`  ${chalk.red('offensive')}          ${chalk.dim('Aggressive exploitation, PoC chains')}`);
-    console.log(`  ${chalk.red('grey-hat')}           ${chalk.dim('Balanced offensive/defensive')}`);
-    console.log(`  ${chalk.red('forensic')}           ${chalk.dim('Evidence preservation, chain-of-custody')}`);
-    console.log(`  ${chalk.red('reverse-engineering')} ${chalk.dim('Binary analysis, decompilation')}`);
-    console.log(`  ${chalk.red('mobile-pentest')}     ${chalk.dim('Android / iOS assessment')}`);
+    printSection('PENTEST  (ceobe pentest <target> --mode <mode>)');
+    const modes: [string, string][] = [
+      ['auto',               'Auto-detect based on target'],
+      ['bug-bounty',         'HackerOne / Bugcrowd — scope-strict'],
+      ['red-team',           'Stealth ops, persistence, lateral movement'],
+      ['ctf',                'HackTheBox / TryHackMe — speed-first'],
+      ['blue-team',          'Detection, IR, defensive audit'],
+      ['offensive',          'Aggressive exploitation, PoC chains'],
+      ['grey-hat',           'Balanced offensive / defensive'],
+      ['forensic',           'Evidence preservation, chain-of-custody'],
+      ['reverse-engineering','Binary analysis, decompilation'],
+      ['mobile-pentest',     'Android / iOS assessment'],
+      ['team',               '3-agent mailbox: recon → exploit → report'],
+    ];
+    for (const [mode, desc] of modes) {
+      console.log(`  ${C.red(mode.padEnd(22))} ${C.dim(desc)}`);
+    }
   }
 
-
-
-  console.log('');
-  console.log(chalk.bold('  TELEGRAM COMMANDS (When running daemon --telegram)'));
-  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  console.log(`  ${chalk.cyan('/start')}                       ${chalk.dim('Wake up the bot and check status')}`);
-  console.log(`  ${chalk.cyan('/projects')}                    ${chalk.dim('List all your active workspaces')}`);
-  console.log(`  ${chalk.cyan('/addproject <name> <path>')}    ${chalk.dim('Register a new workspace')}`);
-  console.log(`  ${chalk.cyan('/cd <name>')}                   ${chalk.dim('Switch to a specific workspace')}`);
-  console.log(`  ${chalk.cyan('/cost')}                        ${chalk.dim('View live API token usage & costs')}`);
-  console.log(`  ${chalk.cyan('/status')}                      ${chalk.dim('Check current pipeline status')}`);
-  console.log(`  ${chalk.cyan('/logs')}                        ${chalk.dim('Tail the last 50 lines of execution logs')}`);
-  console.log(`  ${chalk.cyan('/read <file>')}                 ${chalk.dim('Read project files directly via chat')}`);
-  console.log(`  ${chalk.cyan('/mode <ask|autonomous>')}       ${chalk.dim('Set manual confirmation or full autonomy')}`);
-  console.log(`  ${chalk.cyan('/ask | /auto')}                 ${chalk.dim('Shortcuts to change execution mode')}`);
-  console.log(`  ${chalk.cyan('/cancel')}                      ${chalk.dim('Clear the task queue and stop execution')}`);
-  console.log(`  ${chalk.dim('  * Any normal message will be treated as an instruction for Ceobe.')}`);
+  // ── QUICK START ───────────────────────────────────────────
+  printSection('QUICK START');
+  const steps = [
+    ['ceobe setup',                   'Configure API keys interactively'],
+    ['ceobe auto "Build a Go API"',   'Full autonomous build'],
+    ['ceobe plan "Landing page"',     'Generate plan for manual review'],
+    ['ceobe audit',                   'QA-check the generated plan'],
+    ['ceobe execute',                 'Run the approved plan'],
+  ];
+  steps.forEach(([cmd, desc], i) => {
+    console.log(`  ${C.dim((i + 1) + '.')} ${C.accent(cmd.padEnd(34))} ${C.dim(desc)}`);
+  });
 
   console.log('');
-  console.log(chalk.bold('  KEY MANAGEMENT'));
-  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  console.log(`  ${chalk.cyan('ceobe key list')}               ${chalk.dim('Lihat semua key & provider aktif')}`);
-  console.log(`  ${chalk.cyan('ceobe key set <prov> <val>')}   ${chalk.dim('Simpan API key atau config provider')}`);
-  console.log(`  ${chalk.cyan('ceobe key get <prov>')}         ${chalk.dim('Cek nilai key (tersensor) untuk provider')}`);
-  console.log(`  ${chalk.cyan('ceobe key remove <prov>')}      ${chalk.dim('Hapus API key dari penyimpanan')}`);
-  console.log(`  ${chalk.dim('  Provider: gemini · anthropic · deepseek · glm · kimi · groq · openai · ollama')}`);
-  console.log(`  ${chalk.dim('  Config  : planner-provider · executor-provider · planner-model · executor-model')}`);
-
-  console.log('');
-  console.log(chalk.bold('  QUICK START'));
-  console.log(chalk.dim('  ─────────────────────────────────────────────────'));
-  console.log(`  ${chalk.dim('1.')} ${chalk.cyan('ceobe setup')}                  ${chalk.dim('Configure your API keys')}`);
-  console.log(`  ${chalk.dim('2.')} ${chalk.cyan('ceobe auto "your idea"')}       ${chalk.dim('Let Ceobe build it fully autonomously')}`);
-  console.log(`  ${chalk.dim('3.')} ${chalk.cyan('ceobe plan "your idea"')}       ${chalk.dim('Generate plan for manual review')}`);
-  console.log(`  ${chalk.dim('4.')} ${chalk.cyan('ceobe audit')}                  ${chalk.dim('Verify plan integrity')}`);
-  console.log(`  ${chalk.dim('5.')} ${chalk.cyan('ceobe execute')}                ${chalk.dim('Build the project')}`);
-  console.log('');
-  console.log(chalk.dim(`  Docs & source: https://github.com/your-repo/ceobe`));
+  console.log(C.dim(`  ─────────────────────────────────────────────────────`));
+  console.log(
+    C.muted('  Source: ') + C.dim('https://github.com/Yoraexe/ceobe') +
+    C.muted('  ·  License: MIT') +
+    C.muted(`  ·  v${VERSION}`)
+  );
   console.log('');
 }

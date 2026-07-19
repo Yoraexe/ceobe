@@ -20,6 +20,8 @@ import { checkToolInstalled } from '../ai/pentest/toolsCatalog';
 import { runPentestLoop } from '../ai/pentest/pentestSupervisor';
 
 export async function runMcpServer() {
+  process.env.CEOBE_MCP_MODE = 'true';
+
   const server = new McpServer({
     name: 'ceobe-mcp',
     version: '1.15.0'

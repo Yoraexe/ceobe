@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { readProjects } from '../utils/projectRegistry';
+import lockfile from 'proper-lockfile';
 
 export interface ProjectSession {
   projectName: string;
@@ -20,6 +21,12 @@ export const sessionStore = new Map<number, ProjectSession>();
 function loadSessions(): void {
   try {
     if (fs.existsSync(SESSION_FILE)) {
+      let release: (() => void) | undefined;
+      try {
+        release = lockfile.lockSync(SESSION_FILE);
+      } catch {
+        // proceed if lock cannot be acquired
+      }
       const data = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
       for (const [key, value] of Object.entries(data)) {
         const numKey = Number(key);
@@ -27,6 +34,7 @@ function loadSessions(): void {
           sessionStore.set(numKey, value as ProjectSession);
         }
       }
+      if (release) release();
     }
   } catch {
     // Ignore corrupt session file
@@ -37,10 +45,24 @@ function saveSessions(): void {
   try {
     const dir = path.dirname(SESSION_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    if (!fs.existsSync(SESSION_FILE)) {
+      fs.writeFileSync(SESSION_FILE, '{}', { encoding: 'utf8', mode: 0o600 });
+    }
+
+    let release: (() => void) | undefined;
+    try {
+      release = lockfile.lockSync(SESSION_FILE);
+    } catch {
+      // proceed if lock cannot be acquired
+    }
+
     const data = Object.fromEntries(sessionStore.entries());
     const tempPath = SESSION_FILE + '.tmp.' + Math.random().toString(36).substring(2);
     fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tempPath, SESSION_FILE);
+
+    if (release) release();
   } catch {
     // Ignore save errors
   }

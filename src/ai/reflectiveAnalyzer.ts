@@ -76,6 +76,12 @@ Ensure it is valid JSON with no markdown wrapping like \`\`\`json.`;
 
         const report = JSON.parse(jsonStr) as ReflectionReport;
         
+        // Ensure defaults for arrays and fields to prevent TypeError
+        if (!report.patterns || !Array.isArray(report.patterns)) report.patterns = [];
+        if (!report.suggestedSkills || !Array.isArray(report.suggestedSkills)) report.suggestedSkills = [];
+        if (!report.costOutliers || !Array.isArray(report.costOutliers)) report.costOutliers = [];
+        if (typeof report.efficiencyScore !== 'number') report.efficiencyScore = 100;
+        
         spinner.succeed(chalk.green('Reflection analysis complete.'));
         
         console.log(chalk.cyan(`\n--- Reflection Report (Score: ${report.efficiencyScore}/100) ---`));

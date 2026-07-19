@@ -6,7 +6,7 @@
 // Main Functions: CLI route handlers
 
 import { Command } from 'commander';
-import { printHelp, VERSION } from './ui/banner';
+import { printHelp, printAnimatedBanner, VERSION } from './ui/banner';
 
 import { registerAutoCommand } from './cli/commands/auto';
 import { registerPlanCommands } from './cli/commands/plan';
@@ -42,15 +42,17 @@ program
     printHelp();
   });
 
-// Help & default (no args)
+// Help & default (no args) — animated boot when called bare
 program
   .command('help')
   .description('Tampilkan panduan lengkap Ceobe')
-  .action(() => {
+  .action(async () => {
+    await printAnimatedBanner();
     printHelp();
   });
 
-program.action(() => {
+program.action(async () => {
+  await printAnimatedBanner();
   printHelp();
 });
 

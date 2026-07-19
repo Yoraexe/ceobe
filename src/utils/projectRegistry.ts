@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import lockfile from 'proper-lockfile';
 
 export interface ProjectRegistry {
   [name: string]: string; // name -> absolute path
@@ -19,10 +20,18 @@ function getProjectRegistryPath(): string {
 export function readProjects(): ProjectRegistry {
   const filePath = getProjectRegistryPath();
   if (!fs.existsSync(filePath)) return {};
+  let release: (() => void) | undefined;
+  try {
+    release = lockfile.lockSync(filePath);
+  } catch {
+    // proceed if lock cannot be acquired
+  }
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as ProjectRegistry;
   } catch {
     return {};
+  } finally {
+    if (release) release();
   }
 }
 
@@ -30,7 +39,25 @@ function writeProjects(projects: ProjectRegistry): void {
   const filePath = getProjectRegistryPath();
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(projects, null, 2), { encoding: 'utf8', mode: 0o600 });
+
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, '{}', { encoding: 'utf8', mode: 0o600 });
+  }
+
+  let release: (() => void) | undefined;
+  try {
+    release = lockfile.lockSync(filePath);
+  } catch {
+    // proceed if lock cannot be acquired
+  }
+
+  try {
+    const tempPath = filePath + '.tmp.' + Math.random().toString(36).substring(2);
+    fs.writeFileSync(tempPath, JSON.stringify(projects, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    if (release) release();
+  }
 }
 
 export function registerProject(name: string, absolutePath: string): void {
