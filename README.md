@@ -11,7 +11,7 @@
 
 **Autonomous AI Engineering Orchestrator**
 
-`v1.16.0` · `Three Brains Architecture` · `Model-Agnostic` · `MIT`
+`v1.17.0` · `Three Brains Architecture` · `Model-Agnostic` · `MIT`
 
 [![npm](https://img.shields.io/npm/v/ceobe-mastery-cli?color=4FC3D9&label=npm&style=flat-square)](https://www.npmjs.com/package/ceobe-mastery-cli)
 [![license](https://img.shields.io/github/license/Yoraexe/ceobe?color=6DCEA8&style=flat-square)](LICENSE)

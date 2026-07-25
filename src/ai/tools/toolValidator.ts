@@ -19,7 +19,7 @@ export async function validateToolResult(toolName: string, _input: any, result: 
 
   // 1. Universal String Error Check
   if (typeof result === 'string') {
-    if (result.trim().startsWith('Error:') || result.includes('Command failed:')) {
+    if (result.trim().startsWith('Error:') || result.startsWith('[TOOL_FAILED]') || result.includes('Command failed:')) {
       valid = false;
       failureReason = 'Explicit error detected in tool output.';
     }
@@ -34,8 +34,8 @@ export async function validateToolResult(toolName: string, _input: any, result: 
       case 'move_file':
       case 'delete_file':
       case 'create_directory':
-        // These handlers generally return "Successfully..." or "Error:..."
-        if (typeof result === 'string' && !result.toLowerCase().includes('success') && !result.toLowerCase().includes('task marked as finished')) {
+        // These handlers generally return "Successfully...", "Directory already exists", or "Error:..."
+        if (typeof result === 'string' && !result.toLowerCase().includes('success') && !result.toLowerCase().includes('already exists') && !result.toLowerCase().includes('task marked as finished')) {
            valid = false;
            failureReason = 'Did not receive explicit success confirmation from mutating tool.';
         }
@@ -52,10 +52,9 @@ export async function validateToolResult(toolName: string, _input: any, result: 
         break;
         
       case 'execute_command':
-        // Commands that just exit with 0 might have no output.
-        // We rely on the Command failed: check above. But if it's completely empty string and wasn't expected:
+        // Commands that exit with 0 might have no output.
         if (typeof result === 'string' && result.trim() === '') {
-           // Not necessarily a failure, some commands output nothing on success.
+          return { valid: true, originalResult: result, enhancedResult: 'Command executed successfully with no stdout output.' };
         }
         break;
     }

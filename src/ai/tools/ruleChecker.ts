@@ -19,7 +19,10 @@ export interface RuleViolation {
 export async function checkRules(changedFiles: string[]): Promise<RuleViolation[]> {
   const violations: RuleViolation[] = [];
   const projectDir = getProjectDir();
-  const project = new Project({ useInMemoryFileSystem: false });
+  const tsConfigPath = path.join(projectDir, 'tsconfig.json');
+  const project = fs.existsSync(tsConfigPath)
+    ? new Project({ tsConfigFilePath: tsConfigPath, useInMemoryFileSystem: false })
+    : new Project({ useInMemoryFileSystem: false });
   
   const existingFiles = new Set<string>();
   const tsFiles: string[] = [];
@@ -41,8 +44,8 @@ export async function checkRules(changedFiles: string[]): Promise<RuleViolation[
   for (const sourceFile of project.getSourceFiles()) {
     const filePath = sourceFile.getFilePath();
     const relPath = path.relative(projectDir, filePath).replace(/\\/g, '/');
-    // Fix L-14: Narrow the isController heuristic to prevent false positives on files that just have "api" in their name
-    const isController = relPath.toLowerCase().includes('/controllers/') || relPath.toLowerCase().includes('/handlers/') || relPath.toLowerCase().includes('/api/');
+    // Fix M-23: Narrow the isController heuristic to prevent false positives on files that just have "api" in their path
+    const isController = /(?:^|\/)(?:controllers|handlers|routes|endpoints)\//i.test(relPath) || (/\/api\//i.test(relPath) && !/\/utils\//i.test(relPath));
     
     // Rule #14: Mandatory File Header
     const firstStmt = sourceFile.getStatements()[0];
@@ -146,7 +149,7 @@ export async function checkRules(changedFiles: string[]): Promise<RuleViolation[
         const propAccess = expr.asKind(SyntaxKind.PropertyAccessExpression);
         if (propAccess) {
           const methodName = propAccess.getName();
-          if (methodName === 'findMany' || methodName === 'find') {
+          if (['findMany', 'find', 'findOne', 'findFirst', 'update', 'delete', 'query'].includes(methodName)) {
             // Check for missing select clause in ORM
             const args = callExpr.getArguments();
             let hasSelect = false;

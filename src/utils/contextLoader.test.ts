@@ -6,6 +6,7 @@ import * as path from 'path';
 vi.mock('fs');
 vi.mock('./context', () => ({
   getProjectDir: () => '/mock/dir',
+  log: () => {},
 }));
 
 describe('contextLoader', () => {

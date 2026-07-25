@@ -5,10 +5,10 @@
 
 import { env } from '../config/env';
 import { createExecutorAdapter } from './providers/router';
-import type { NormalizedMessage, NormalizedTool, NormalizedContentBlock } from './providers/types';
+import type { NormalizedMessage, NormalizedTool, NormalizedContentBlock, IProviderAdapter } from './providers/types';
 import chalk from 'chalk';
 import ora from 'ora';
-import { tools as rawTools, activeBackgroundProcesses } from './tools/systemTools';
+import { tools as rawTools } from './tools/systemTools';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getProjectDir, log } from '../utils/context';
@@ -35,15 +35,17 @@ export async function executePlan(
   selectedSkills: string[] = []
 ): Promise<void> {
   clearLoadedPlugins();
-  const adapter = createExecutorAdapter();
-  const spinner = ora(`${adapter.name.toUpperCase()} (${adapter.modelId}) is executing the plan...`).start();
-
   let jsonHealCount = 0;
   let commandHealCount = 0;
   let maxTokensRetries = 0;
   let consecutiveSuccesses = 0;
+  let adapter: IProviderAdapter | undefined;
+  let spinner: ReturnType<typeof ora> | undefined;
 
   try {
+    adapter = createExecutorAdapter();
+    const activeAdapter = adapter;
+    spinner = ora(`${activeAdapter.name.toUpperCase()} (${activeAdapter.modelId}) is executing the plan...`).start();
     const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
     if (!fs.existsSync(path.dirname(logPath))) {
       fs.mkdirSync(path.dirname(logPath), { recursive: true });
@@ -59,7 +61,7 @@ export async function executePlan(
       : dynamicTools;
     const finalTools = [...tools, ...filteredDynamicTools].sort((a, b) => a.name.localeCompare(b.name));
 
-    logExecution(`--- STARTED EXECUTION (provider: ${adapter.name}, model: ${adapter.modelId}) ---`);
+    logExecution(`--- STARTED EXECUTION (provider: ${activeAdapter.name}, model: ${activeAdapter.modelId}) ---`);
 
     const systemInstruction = getExecutorSystemInstruction();
 
@@ -72,7 +74,7 @@ export async function executePlan(
 
     let isThinking = true;
     let iterationCount = 0;
-    const MAX_ITERATIONS = 50;
+    const MAX_ITERATIONS = process.env.CEOBE_MAX_ITERATIONS ? parseInt(process.env.CEOBE_MAX_ITERATIONS, 10) : 50;
 
     while (isThinking) {
       iterationCount++;
@@ -83,7 +85,7 @@ export async function executePlan(
 
       messages = trimMessages(messages, 25);
 
-      const response = await withRetry(() => adapter.chat(messages, finalTools, systemInstruction));
+      const response = await withRetry(() => activeAdapter.chat(messages, finalTools, systemInstruction));
 
       if (response.usage) {
         recordUsage({
@@ -134,7 +136,7 @@ export async function executePlan(
         if (consecutiveSuccesses >= 2) {
           maxTokensRetries = 0;
         } else if (maxTokensRetries > 0) {
-          maxTokensRetries--;
+          maxTokensRetries = Math.max(0, maxTokensRetries - 1);
         }
       }
 
@@ -210,15 +212,12 @@ export async function executePlan(
              
              const finishTaskTool = toolCalls.find(t => t.name === 'finish_task');
              if (finishTaskTool) {
-               messages.push({
-                 role: 'user',
-                 content: [{
-                   type: 'tool_result',
-                   tool_use_id: finishTaskTool.id,
-                   name: finishTaskTool.name,
-                   content: 'Task marked as finished successfully.'
-                 }] as NormalizedContentBlock[]
-               });
+               toolResultBlocks.push({
+                 type: 'tool_result',
+                 tool_use_id: finishTaskTool.id,
+                 name: finishTaskTool.name,
+                 content: 'Task marked as finished successfully.'
+               } as NormalizedContentBlock);
              }
            }
         }
@@ -234,9 +233,11 @@ export async function executePlan(
     logExecution('--- FINISHED EXECUTION ---\n');
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    spinner.fail(
-      chalk.red(`[${adapter.name.toUpperCase()}] Execution failed: ${msg}`)
-    );
+    if (spinner) {
+      spinner.fail(
+        chalk.red(`[${adapter?.name?.toUpperCase() || 'EXECUTOR'}] Execution failed: ${msg}`)
+      );
+    }
     const logPath = path.join(getProjectDir(), '.ceobe', 'execution.log');
     fs.appendFileSync(
       logPath,
@@ -244,11 +245,6 @@ export async function executePlan(
       'utf8'
     );
     throw error;
-  } finally {
-    for (const [id, child] of activeBackgroundProcesses.entries()) {
-      child.kill('SIGKILL');
-      activeBackgroundProcesses.delete(id);
-    }
   }
 }
 

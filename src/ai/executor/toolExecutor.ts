@@ -94,6 +94,15 @@ export async function executeToolCalls(
 
     logExecution(`TOOL_CALL: ${block.name} | Input: ${logInputStr}`);
 
+function maskSensitiveData(content: unknown): unknown {
+  if (typeof content !== 'string') return content;
+  return content
+    .replace(/sk-[a-zA-Z0-9_-]{20,}/g, '[MASKED_KEY]')
+    .replace(/sk-ant-[a-zA-Z0-9_-]{20,}/g, '[MASKED_KEY]')
+    .replace(/AIza[0-9A-Za-z\-_]{35}/g, '[MASKED_KEY]')
+    .replace(/Bearer\s+[a-zA-Z0-9\-\._~+\/]+=*/gi, 'Bearer [MASKED_TOKEN]');
+}
+
     // Check Talos Guard and Tools Catalog before execution if running in pentest context
     const pentestState = await readPentestState();
     if (pentestState && pentestState.scopePath) {
@@ -104,6 +113,10 @@ export async function executeToolCalls(
         enforceTalosGuard(String(block.input.url_or_path), pentestState.scopePath);
       } else if (block.name === 'reverse_engineer' && block.input?.url) {
         enforceTalosGuard(String(block.input.url), pentestState.scopePath);
+      } else if (block.name === 'start_background_service' && block.input?.command) {
+        enforceTalosGuard(String(block.input.command), pentestState.scopePath);
+      } else if (block.name === 'write_file' && block.input?.file_path) {
+        enforceTalosGuard(String(block.input.file_path), pentestState.scopePath);
       }
 
       // 2. Warn/verify tool catalog installation state
@@ -136,7 +149,8 @@ export async function executeToolCalls(
 
     let resultPayload: unknown;
     if (block.input && typeof block.input === 'object' && '_error' in block.input) {
-      resultPayload = `Error: Model generated malformed JSON for tool arguments. ${block.input._error || 'Invalid syntax'}. Raw input: ${block.input.raw}`;
+      const sanitizedRaw = maskSensitiveData(String(block.input.raw || ''));
+      resultPayload = `Error: Model generated malformed JSON for tool arguments. ${block.input._error || 'Invalid syntax'}. Raw input: ${sanitizedRaw}`;
       state.jsonHealCount++;
       await markSelfHeal();
       logExecution(`SELF_HEAL_JSON[${state.jsonHealCount}]: Malformed JSON detected in tool '${block.name}'.`);
@@ -146,6 +160,9 @@ export async function executeToolCalls(
     }
     
     let resultBlocks = truncateToolResult(resultPayload, 8000);
+    if (typeof resultBlocks === 'string') {
+      resultBlocks = maskSensitiveData(resultBlocks) as string;
+    }
     const resultStr = typeof resultBlocks === 'string' ? resultBlocks : JSON.stringify(resultBlocks);
 
     if (block.name === 'execute_command') {

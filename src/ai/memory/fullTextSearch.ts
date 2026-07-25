@@ -87,18 +87,33 @@ export function searchFullText(query: string, index: FullTextIndex, topK: number
   if (queryTokens.length === 0) return [];
 
   const scores = new Map<string, { filePath: string; line: number; matchCount: number }>();
+  const indexKeys = Object.keys(index);
 
-  // Simple TF-like scoring: 
   for (const qToken of queryTokens) {
-    for (const token in index) {
-      if (qToken.length < 3 && token !== qToken) continue; // Fix H-16: Prevent DoS from short substring queries
-      if (token.includes(qToken)) { // exact or substring
-        for (const entry of index[token]) {
-          const key = `${entry.filePath}:${entry.line}`;
-          const current = scores.get(key) || { filePath: entry.filePath, line: entry.line, matchCount: 0 };
-          current.matchCount += (token === qToken ? 2 : 1); // Exact match gets higher score
-          scores.set(key, current);
+    // 1. Direct O(1) exact match lookup
+    if (index[qToken]) {
+      for (const entry of index[qToken]) {
+        const key = `${entry.filePath}:${entry.line}`;
+        const current = scores.get(key) || { filePath: entry.filePath, line: entry.line, matchCount: 0 };
+        current.matchCount += 2;
+        scores.set(key, current);
+      }
+    }
+
+    // 2. Substring matching for longer tokens with max scan cap
+    if (qToken.length >= 4) {
+      let checks = 0;
+      for (const token of indexKeys) {
+        if (token === qToken) continue;
+        if (token.includes(qToken)) {
+          for (const entry of index[token]) {
+            const key = `${entry.filePath}:${entry.line}`;
+            const current = scores.get(key) || { filePath: entry.filePath, line: entry.line, matchCount: 0 };
+            current.matchCount += 1;
+            scores.set(key, current);
+          }
         }
+        if (++checks > 1000) break; // Cap search depth to prevent CPU DoS
       }
     }
   }

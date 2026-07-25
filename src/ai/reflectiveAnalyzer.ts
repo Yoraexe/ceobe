@@ -27,7 +27,21 @@ export async function analyzeExecutionLog(autoGenerateSkill = false): Promise<Re
         return null;
     }
 
-    const logContent = fs.readFileSync(logPath, 'utf-8');
+    // Fix M-07: Read at most the last 500KB of log file to prevent loading massive files into memory
+    const stats = fs.statSync(logPath);
+    const maxReadBytes = 500 * 1024;
+    let logContent = '';
+
+    if (stats.size > maxReadBytes) {
+      const buffer = Buffer.alloc(maxReadBytes);
+      const fd = fs.openSync(logPath, 'r');
+      fs.readSync(fd, buffer, 0, maxReadBytes, stats.size - maxReadBytes);
+      fs.closeSync(fd);
+      logContent = buffer.toString('utf-8');
+    } else {
+      logContent = fs.readFileSync(logPath, 'utf-8');
+    }
+
     const lines = logContent.split('\n').filter(l => l.trim().length > 0);
     const recentLines = lines.slice(-500).join('\n');
 
@@ -35,6 +49,12 @@ export async function analyzeExecutionLog(autoGenerateSkill = false): Promise<Re
 
     const adapter = createProviderAdapter('planner');
     
+    // Fix M-08: Complete XML sanitization for log entries
+    const sanitizedLog = recentLines
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
     const prompt = `You are a Principal Engineering Manager reflecting on the AI agent's recent execution logs.
 Analyze the following logs to identify:
 1. Inefficiency patterns (e.g. repeated tool failures, stuck loops).
@@ -43,7 +63,7 @@ Analyze the following logs to identify:
 
 Log data:
 <LOG_ENTRIES>
-${recentLines.replace(/<LOG_ENTRIES>/gi, '[SANITIZED]').replace(/<\/LOG_ENTRIES>/gi, '[SANITIZED]')}
+${sanitizedLog}
 </LOG_ENTRIES>
 
 Output your analysis as a strict JSON object with this shape:
@@ -74,7 +94,19 @@ Ensure it is valid JSON with no markdown wrapping like \`\`\`json.`;
             jsonStr = jsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
         }
 
-        const report = JSON.parse(jsonStr) as ReflectionReport;
+        let report: ReflectionReport;
+        try {
+            report = JSON.parse(jsonStr) as ReflectionReport;
+        } catch (parseErr) {
+            spinner.warn(chalk.yellow(`[ReflectiveAnalyzer] Failed to parse LLM reflection output. Raw response snippet: ${jsonStr.slice(0, 100)}...`));
+            report = {
+                period: { from: new Date().toISOString(), to: new Date().toISOString() },
+                efficiencyScore: 100,
+                patterns: ['Could not parse reflection output from LLM.'],
+                suggestedSkills: [],
+                costOutliers: []
+            };
+        }
         
         // Ensure defaults for arrays and fields to prevent TypeError
         if (!report.patterns || !Array.isArray(report.patterns)) report.patterns = [];
@@ -96,7 +128,8 @@ Ensure it is valid JSON with no markdown wrapping like \`\`\`json.`;
         
         if (autoGenerateSkill && report.suggestedSkills.length > 0) {
             console.log(chalk.blue(`\n[Auto-Skill] Drafting new skill: ${report.suggestedSkills[0]}...`));
-            const skillName = report.suggestedSkills[0].replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+            // Fix M-09: Sanitize skillName to strip leading and trailing hyphens
+            const skillName = report.suggestedSkills[0].replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-+|-+$/g, '');
             const skillDir = path.join(getProjectDir(), 'skills', skillName);
             fs.mkdirSync(skillDir, { recursive: true });
             

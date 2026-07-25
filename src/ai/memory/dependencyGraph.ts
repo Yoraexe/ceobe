@@ -69,7 +69,12 @@ export function buildDependencyGraph(workspaceRoot: string, filesToProcess: stri
     }
     const node = graph.get(relPath)!;
 
-    // Reset current file's imports and exports to rebuild
+    // Reset current file's imports and exports to rebuild, and clean old importedBy references
+    for (const [otherPath, otherNode] of graph.entries()) {
+      if (otherPath !== relPath && otherNode.importedBy) {
+        otherNode.importedBy = otherNode.importedBy.filter(p => p !== relPath);
+      }
+    }
     node.imports = [];
     node.exports = [];
 
@@ -102,6 +107,9 @@ export function buildDependencyGraph(workspaceRoot: string, filesToProcess: stri
       }
     }
   }
+
+  // Clean up source files from project instance to prevent ts-morph memory leaks (H-25)
+  project.getSourceFiles().forEach(sf => project.removeSourceFile(sf));
 
   return graph;
 }

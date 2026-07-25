@@ -24,7 +24,7 @@ export async function runMcpServer() {
 
   const server = new McpServer({
     name: 'ceobe-mcp-server',
-    version: '1.16.0'
+    version: '1.17.0'
   });
 
   // Expose Ceobe's Engineering Rules as a Prompt
@@ -108,7 +108,7 @@ export async function runMcpServer() {
     'check_tool_status',
     'Check if a security tool (e.g. nmap, sqlmap) is installed on the host system.',
     {
-      toolName: z.string().describe('Name of the security tool to verify.')
+      toolName: z.string().regex(/^[a-zA-Z0-9._-]+$/).max(50).describe('Name of the security tool to verify.')
     },
     async ({ toolName }) => {
       const isInstalled = checkToolInstalled(toolName);
@@ -121,9 +121,9 @@ export async function runMcpServer() {
   // Tool 5: Run Pentest Loop
   server.tool(
     'run_pentest',
-    'Start an autonomous penetration testing session on a target.',
+    'Start a penetration testing session on a target.',
     {
-      target: z.string().describe('IP address or domain scope target.'),
+      target: z.string().regex(/^[a-zA-Z0-9.:_\-\/]+$/).max(256).describe('IP address or domain scope target.'),
       mode: z.enum(['auto', 'ctf', 'team', 'bug-bounty']).optional().describe('Attack execution engagement mode.')
     },
     async ({ target, mode }) => {
@@ -132,7 +132,8 @@ export async function runMcpServer() {
       const validModes = ['auto', 'ctf', 'team', 'bug-bounty', 'red-team', 'blue-team', 'offensive', 'grey-hat', 'forensic', 'reverse-engineering', 'mobile-pentest'];
       const safeMode = mode && validModes.includes(String(mode)) ? String(mode) : 'auto';
 
-      await runPentestLoop(target, safeMode as any, undefined, false);
+      // Always enforce askBeforeExecute = true for MCP calls to prevent unauthenticated RCE
+      await runPentestLoop(target, safeMode as any, undefined, true);
       return {
         content: [{ type: 'text', text: `Successfully executed pentest loop on target: ${target}` }]
       };

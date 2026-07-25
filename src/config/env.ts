@@ -9,21 +9,46 @@ import * as path from 'path';
 import * as os from 'os';
 import dotenv from 'dotenv';
 
-// ── Step 1: Inject keys from ~/.ceobe/keys.json into process.env
-//    This runs BEFORE dotenv so stored keys take priority over .env (but system env still wins).
+const ALLOWED_STORED_KEYS = new Set([
+  'GEMINI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'TELEGRAM_BOT_TOKEN',
+  'TELEGRAM_ALLOWED_USERS',
+  'GLM_API_KEY',
+  'KIMI_API_KEY',
+  'DEEPSEEK_API_KEY',
+  'GROQ_API_KEY',
+  'TOGETHER_API_KEY',
+  'QWEN_API_KEY',
+  'CLOUDFLARE_ACCOUNT_ID',
+  'CLOUDFLARE_GATEWAY_ID',
+  'CEOBE_PLANNER_PROVIDER',
+  'CEOBE_PLANNER_MODEL',
+  'CEOBE_EXECUTOR_PROVIDER',
+  'CEOBE_EXECUTOR_MODEL',
+  'CEOBE_QA_PROVIDER',
+  'CEOBE_QA_MODEL',
+  'CEOBE_EMBEDDING_PROVIDER',
+  'CEOBE_EMBEDDING_MODEL',
+  'CEOBE_MAX_BUDGET',
+  'CEOBE_MAX_TOKENS',
+  'CEOBE_SANDBOX',
+  'CEOBE_SANDBOX_IMAGE',
+]);
+
 function injectStoredKeys(): void {
   const keysPath = path.join(os.homedir(), '.ceobe', 'keys.json');
   if (!fs.existsSync(keysPath)) return;
   try {
     const stored = JSON.parse(fs.readFileSync(keysPath, 'utf8')) as Record<string, string>;
     for (const [k, v] of Object.entries(stored)) {
-      if (v && !process.env[k]) {
-        // Only inject if not already set by system env (system env wins over stored keys)
-        process.env[k] = v;
+      if (v && ALLOWED_STORED_KEYS.has(k) && typeof v === 'string' && v.trim().length > 0 && !process.env[k]) {
+        process.env[k] = v.trim();
       }
     }
   } catch {
-    // Silently ignore corrupt key store — user can run `ceobe key list` to diagnose
+    // Silently ignore corrupt key store
   }
 }
 
@@ -104,7 +129,7 @@ export function loadEnv(): EnvConfig {
     TARGET_PROJECT_DIR: process.cwd(),
     CEOBE_SANDBOX: (['docker', 'none'].includes(process.env.CEOBE_SANDBOX as string) ? process.env.CEOBE_SANDBOX : 'none') as 'docker' | 'none', // Fix M-03: Safe default fallback to 'none' when not configured
     CEOBE_SANDBOX_IMAGE: getOptional('CEOBE_SANDBOX_IMAGE') || '',
-    CEOBE_MAX_BUDGET: parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 5, // Fix M-04: Secure default limit
+    CEOBE_MAX_BUDGET: process.env.CEOBE_MAX_BUDGET === '0' ? 0 : (parseFloat(getOptional('CEOBE_MAX_BUDGET')) || 5),
     CEOBE_MAX_TOKENS: parseInt(getOptional('CEOBE_MAX_TOKENS'), 10) || 16384,
   };
 

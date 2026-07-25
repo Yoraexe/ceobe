@@ -2,7 +2,7 @@
 // Caller: src/ai/executor.ts, src/ai/tools/systemTools.ts
 // Dependensi: fs, path, url
 // Main Functions: loadDynamicTools, handlePluginCall, clearLoadedPlugins
-// Side Effects: Tidak ada.
+// Side Effects: Membaca filesystem dan memuat kode executable pihak ketiga.
 
 import { log } from '../../utils/context';
 import * as fs from 'fs';
@@ -42,22 +42,20 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
 
   log(chalk.blue(`[PluginLoader] Ditemukan ${pluginFiles.length} file plugin di .ceobe/plugins/`));
 
-  // Ensure tsx is registered if we need to load .ts files
+  // Ensure tsx/ts-node is registered if we need to load .ts files
   const hasTs = pluginFiles.some(f => f.endsWith('.ts'));
   if (hasTs) {
     try {
-      // Trying to register ts-node or tsx programmatically if not already
-      // This is a best-effort approach. If the process was started with `tsx`, this is a no-op.
       if (!(process as any)[Symbol.for('ts-node.register.instance')]) {
-         require('ts-node/register/transpile-only');
+        require('ts-node/register/transpile-only');
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
 
   const tools: NormalizedTool[] = [];
-  const { confirmToolCall } = await import('../../utils/modeManager');
+  const { askUserConfirmation } = await import('../../utils/modeManager');
 
   for (const file of pluginFiles) {
     try {
@@ -66,14 +64,14 @@ export async function loadDynamicTools(projectDir: string): Promise<NormalizedTo
       const realPluginsDir = fs.realpathSync(pluginsDir);
       
       if (!realPath.startsWith(realPluginsDir)) {
-         log(chalk.red(`[PluginLoader] ❌ Keamanan: Plugin ${file} berada di luar direktori plugins. Diabaikan.`));
-         continue;
+        log(chalk.red(`[PluginLoader] ❌ Keamanan: Plugin ${file} berada di luar direktori plugins. Diabaikan.`));
+        continue;
       }
 
       const fileUrl = pathToFileURL(realPath).href;
       
-      log(chalk.yellow(`[PluginLoader] ⚠️ Keamanan: Meminta izin untuk memuat plugin eksternal '${file}'...`));
-      const approved = await confirmToolCall('load_plugin', { file, path: realPath });
+      log(chalk.yellow(`[PluginLoader] ⚠️ Keamanan: Meminta izin eksplisit untuk memuat plugin eksternal '${file}'...`));
+      const approved = await askUserConfirmation(`Load external executable plugin code from '${file}'?`);
       if (!approved) {
         log(chalk.red(`[PluginLoader] ❌ Ditolak oleh pengguna. Plugin '${file}' tidak dimuat.`));
         continue;

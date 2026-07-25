@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import * as path from 'path';
 import packageJson from '../../package.json';
 
-export const VERSION = packageJson.version || '1.16.0';
+export const VERSION = packageJson.version || '1.17.0';
 
 // ─────────────────────────────────────────────────────────────
 // Palette — Satu warna utama + aksen abu

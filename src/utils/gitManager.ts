@@ -169,9 +169,17 @@ export async function createWorktree(branchName: string): Promise<string> {
  */
 export async function removeWorktree(worktreePath: string): Promise<void> {
   const dir = cwd();
+  const allowedBase = path.resolve(dir, '.ceobe', 'worktrees');
+  const resolvedTarget = path.resolve(worktreePath);
+  
+  if (!resolvedTarget.startsWith(allowedBase)) {
+    log(chalk.red(`[GitManager] Blocked attempt to remove worktree outside boundary: ${worktreePath}`));
+    return;
+  }
+
   try {
-    await execAsync(`git worktree remove -f "${worktreePath}"`, { cwd: dir });
-    log(chalk.dim(`[GitManager] Worktree removed: ${worktreePath}`));
+    await execAsync(`git worktree remove -f "${resolvedTarget}"`, { cwd: dir });
+    log(chalk.dim(`[GitManager] Worktree removed: ${resolvedTarget}`));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log(chalk.yellow(`[GitManager] Failed to remove worktree: ${msg}`));
@@ -182,6 +190,9 @@ export async function removeWorktree(worktreePath: string): Promise<void> {
  * Merges a worktree branch into the current branch.
  */
 export async function mergeWorktree(branchName: string): Promise<void> {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(branchName)) {
+    throw new Error(`Invalid branch name format for merge: ${branchName}`);
+  }
   const dir = cwd();
   try {
     log(chalk.cyan(`[GitManager] Merging branch ${branchName}...`));

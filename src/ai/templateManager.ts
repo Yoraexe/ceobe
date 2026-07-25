@@ -71,8 +71,11 @@ export function saveTemplate(description: string): void {
     devops: readSafe('devops.md'),
   };
 
-  const templates = getTemplates();
+  let templates = getTemplates();
   templates.push(template);
+  if (templates.length > 50) {
+    templates = templates.slice(templates.length - 50);
+  }
   
   const file = getTemplatesFile();
   if (!fs.existsSync(path.dirname(file))) {
@@ -83,12 +86,17 @@ export function saveTemplate(description: string): void {
   log(chalk.green(`[TemplateManager] Saved successful task as template: ${template.id}`));
 }
 
+const STOP_WORDS = new Set(['a', 'an', 'the', 'is', 'for', 'to', 'in', 'and', 'or', 'of', 'with', 'on', 'at', 'by', 'buat', 'dan', 'untuk', 'yang', 'di', 'ke']);
+
 // Simple Jaccard similarity for matching
 function calculateSimilarity(str1: string, str2: string): number {
-  const set1 = new Set(str1.toLowerCase().split(/\s+/));
-  const set2 = new Set(str2.toLowerCase().split(/\s+/));
-  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const tokens1 = str1.toLowerCase().split(/\s+/).filter(w => Boolean(w) && !STOP_WORDS.has(w));
+  const tokens2 = str2.toLowerCase().split(/\s+/).filter(w => Boolean(w) && !STOP_WORDS.has(w));
+  const set1 = new Set(tokens1);
+  const set2 = new Set(tokens2);
   const union = new Set([...set1, ...set2]);
+  if (union.size === 0) return 0;
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
   return intersection.size / union.size;
 }
 
@@ -117,7 +125,7 @@ export function applyTemplate(template: TaskTemplate): void {
   if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
   const writeSafe = (file: string, content: string) => {
-    if (content) fs.writeFileSync(path.join(ceobeDir, file), content);
+    if (content !== undefined && content !== null) fs.writeFileSync(path.join(ceobeDir, file), content);
   };
 
   writeSafe('brd.md', template.brd);

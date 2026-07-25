@@ -45,22 +45,37 @@ export async function handleAddProjectCommand(bot: TelegramBot, chatId: number, 
     await bot.sendMessage(chatId, `⚠️ Format salah. Gunakan:\n\`/addproject <name> <absolute_path>\``, { parse_mode: 'Markdown' });
   } else {
     const name = args[0];
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+      await bot.sendMessage(chatId, '❌ Nama project hanya boleh berisi huruf, angka, "-", "_", dan ".".', { parse_mode: 'Markdown' });
+      return;
+    }
     const targetPath = args.slice(1).join(' ');
     const absolutePath = path.resolve(targetPath);
+    
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
+      await bot.sendMessage(chatId, `❌ Gagal: Path tidak ditemukan atau bukan sebuah direktori:\n\`${absolutePath}\``, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(absolutePath);
+    } catch {
+      realPath = absolutePath;
+    }
+
     const isSystemDir = 
-      absolutePath === '/' || 
-      /^[a-zA-Z]:[\\/]*$/.test(absolutePath) || 
-      /windows/i.test(absolutePath) || 
-      /program files/i.test(absolutePath) || 
-      /^\/(etc|var|root|usr|bin|sbin|sys|proc|dev)(\/|$)/.test(absolutePath) ||
-      /\.(ssh|gnupg|aws|kube|docker|config)/i.test(absolutePath); // Fix M-01: Block sensitive hidden dirs
+      realPath === '/' || 
+      /^[a-zA-Z]:[\\/]*$/.test(realPath) || 
+      /^[a-zA-Z]:[\\/]+Windows/i.test(realPath) || 
+      /^[a-zA-Z]:[\\/]+Program Files/i.test(realPath) || 
+      /^\/(etc|var|root|usr|bin|sbin|sys|proc|dev)(\/|$)/.test(realPath) ||
+      /[\\/]\.(ssh|gnupg|aws|kube|docker|git)($|[\\/])/i.test(realPath);
     
     if (isSystemDir) {
-      await bot.sendMessage(chatId, `🚫 Path *${absolutePath}* ditolak karena merupakan direktori sistem.`, { parse_mode: 'Markdown' });
-    } else if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
-      await bot.sendMessage(chatId, `❌ Gagal: Path tidak ditemukan atau bukan sebuah direktori:\n\`${absolutePath}\``, { parse_mode: 'Markdown' });
+      await bot.sendMessage(chatId, `🚫 Path *${realPath}* ditolak karena merupakan direktori sistem atau area sensitif.`, { parse_mode: 'Markdown' });
     } else {
-      registerProject(name, absolutePath);
+      registerProject(name, realPath);
       await bot.sendMessage(chatId, `✅ Project *${name}* berhasil didaftarkan.`, { parse_mode: 'Markdown' });
     }
   }

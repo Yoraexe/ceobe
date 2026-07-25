@@ -46,13 +46,13 @@ function writeProjects(projects: ProjectRegistry): void {
 
   let release: (() => void) | undefined;
   try {
-    release = lockfile.lockSync(filePath);
+    release = lockfile.lockSync(filePath, { retries: { retries: 5, minTimeout: 50, maxTimeout: 500 } });
   } catch {
     // proceed if lock cannot be acquired
   }
 
   try {
-    const tempPath = filePath + '.tmp.' + Math.random().toString(36).substring(2);
+    const tempPath = filePath + '.tmp.' + crypto.randomUUID();
     fs.writeFileSync(tempPath, JSON.stringify(projects, null, 2), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tempPath, filePath);
   } finally {
@@ -61,8 +61,16 @@ function writeProjects(projects: ProjectRegistry): void {
 }
 
 export function registerProject(name: string, absolutePath: string): void {
+  const resolved = path.resolve(absolutePath);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    throw new Error(`Invalid project path '${absolutePath}': Directory does not exist.`);
+  }
+  const rootDir = path.parse(resolved).root;
+  if (resolved === rootDir || resolved.toLowerCase() === 'c:\\windows' || resolved === '/etc') {
+    throw new Error(`Cannot register system root directory '${resolved}' as a project.`);
+  }
   const projects = readProjects();
-  projects[name] = path.resolve(absolutePath);
+  projects[name] = resolved;
   writeProjects(projects);
 }
 

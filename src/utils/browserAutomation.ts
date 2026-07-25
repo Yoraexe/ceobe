@@ -31,13 +31,50 @@ export async function captureScreenshot(urlOrPath: string): Promise<ScreenshotRe
   return executeBrowserInteraction(urlOrPath, []);
 }
 
+function isPrivateIP(ipStr: string): boolean {
+  const ip = ipStr.trim().toLowerCase();
+
+  if (['localhost', 'metadata.google.internal', '100.100.100.200', '0.0.0.0', '0'].includes(ip)) {
+    return true;
+  }
+
+  // IPv6 check
+  if (ip.includes(':')) {
+    if (ip === '::1' || ip === '::' || ip.startsWith('fe80:') || ip.startsWith('fc00:') || ip.startsWith('fd00:')) {
+      return true;
+    }
+  }
+
+  // Hex or octal or integer representation
+  if (/^0x[0-9a-f]+$/i.test(ip) || /^[0-9]+$/.test(ip) || /^0[0-7]+(\.0[0-7]+)*$/.test(ip)) {
+    return true;
+  }
+
+  // standard dotted IPv4
+  const parts = ip.split('.').map(p => parseInt(p, 10));
+  if (parts.length === 4 && parts.every(p => !isNaN(p))) {
+    const [a, b] = parts;
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+  }
+
+  return false;
+}
+
 export async function executeBrowserInteraction(
   urlOrPath: string,
   actions: BrowserAction[]
 ): Promise<ScreenshotResult> {
   let targetUrl = urlOrPath;
   if (!urlOrPath.startsWith('http://') && !urlOrPath.startsWith('https://')) {
-    const fullPath = path.resolve(getProjectDir(), urlOrPath);
+    const cleanPath = urlOrPath.replace(/^file:\/\/\/?/i, '');
+    const fullPath = path.resolve(getProjectDir(), cleanPath);
+    const relative = path.relative(getProjectDir(), fullPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error('SSRF / Path Traversal Protection: Access outside project directory is blocked.');
+    }
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found: ${fullPath}`);
     }
@@ -55,14 +92,12 @@ export async function executeBrowserInteraction(
         const addresses = await dns.lookup(hostname, { all: true });
         addresses.forEach(a => ips.push(a.address));
       } catch (dnsErr) {
-        // DNS failed or unresolved, continue but check the raw hostname string
+        // DNS failed or unresolved
       }
       ips.push(hostname);
 
-      const blockedDomains = ['localhost', '127.0.0.1', '169.254.169.254', '0.0.0.0', '::1', 'metadata.google.internal', '100.100.100.200'];
-      
       for (const ip of ips) {
-        if (blockedDomains.some(d => ip.includes(d)) || ip.match(/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
+        if (isPrivateIP(ip)) {
           throw new Error('SSRF Protection: Access to private/local networks is blocked.');
         }
       }
@@ -112,7 +147,8 @@ export async function executeBrowserInteraction(
             if (action.selector) {
               await page.waitForSelector(action.selector, { timeout: 10000 });
             } else if (action.ms) {
-              await new Promise(r => setTimeout(r, action.ms));
+              const safeMs = Math.min(Math.max(0, action.ms), 30000);
+              await new Promise(r => setTimeout(r, safeMs));
             }
             break;
           case 'press':

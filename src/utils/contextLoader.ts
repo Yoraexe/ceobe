@@ -27,6 +27,11 @@ function readAllFromDir(dirPath: string, extension: string = '.md'): string {
   for (const file of files) {
     const fullPath = path.join(dirPath, file);
     try {
+      const stat = fs.statSync ? fs.statSync(fullPath) : undefined;
+      if (stat && typeof stat.size === 'number' && stat.size > 5 * 1024 * 1024) {
+        log(chalk.yellow(`Skipped ${file}: Exceeds 5MB size limit.`));
+        continue;
+      }
       content += `\n--- File: ${file} ---\n`;
       content += fs.readFileSync(fullPath, 'utf-8');
       content += `\n-----------------------\n`;

@@ -49,16 +49,17 @@ export class MessageQueue {
     if (this.isProcessing) return;
     this.isProcessing = true;
 
-    while (this.queue.length > 0) {
-      const task = this.queue.shift()!;
-      try {
-        await task();
-      } catch (e: unknown) {
-        // Individual task errors are handled inside the task itself, but we log it just in case
-        console.error(`[MessageQueue] Background task failed: ${e instanceof Error ? e.message : String(e)}`);
+    try {
+      while (this.queue.length > 0) {
+        const task = this.queue.shift()!;
+        try {
+          await task();
+        } catch (e: unknown) {
+          console.error(`[MessageQueue] Background task failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
+    } finally {
+      this.isProcessing = false;
     }
-
-    this.isProcessing = false;
   }
 }

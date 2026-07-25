@@ -10,7 +10,8 @@ vi.mock('../../../utils/context', () => ({
 }));
 
 vi.mock('../../utils/modeManager', () => ({
-  confirmToolCall: vi.fn().mockResolvedValue(true)
+  confirmToolCall: vi.fn().mockResolvedValue(true),
+  askUserConfirmation: vi.fn().mockResolvedValue(true)
 }));
 
 describe('pluginLoader', () => {

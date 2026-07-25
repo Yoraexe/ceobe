@@ -222,6 +222,9 @@ export const tools = [
 ];
 
 export async function handleToolCall(toolName: string, rawInput: Record<string, unknown>): Promise<unknown> {
+  if (!rawInput || typeof rawInput !== 'object') {
+    return `Error executing ${toolName}: Input must be a valid JSON object.`;
+  }
   const input = rawInput as Record<string, any>;
   let rawResult: unknown;
   try {
@@ -253,14 +256,15 @@ export async function handleToolCall(toolName: string, rawInput: Record<string, 
         try {
           rawResult = await handlePluginCall(toolName, input);
         } catch (e: unknown) {
-          rawResult = `Error: Tool ${toolName} not recognized or plugin failed: ${e instanceof Error ? e.message : String(e)}`;
+          rawResult = `[TOOL_FAILED] Tool '${toolName}' not recognized or plugin failed: ${e instanceof Error ? e.message : String(e)}`;
         }
         break;
     }
   } catch (error: unknown) {
+    const errCode = (error as { code?: string })?.code;
     const errorMsg = error instanceof Error ? error.message : String(error);
-    if (errorMsg.includes('ENOSPC') || errorMsg.includes('ENOMEM') || errorMsg.includes('EPERM')) {
-      throw error; // Fix H-19: Fatal system errors should abort and trigger recovery
+    if (errCode === 'ENOSPC' || errCode === 'ENOMEM' || errCode === 'EPERM' || errorMsg.includes('ENOSPC')) {
+      throw error; // Fatal system errors should abort and trigger recovery
     }
     rawResult = `Error executing ${toolName}: ${errorMsg}`;
   }

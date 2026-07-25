@@ -69,7 +69,7 @@ export function computeChangedDocs(currentDocs: Record<string, string>, reset: b
 const MAX_RETRIES = 3;
 
 export async function runAutonomousLoop(description: string | NormalizedContentBlock[], askBeforeExecute: boolean = false, isFeature: boolean = false, useWorktree: boolean = false): Promise<void> {
-  const branchName = `ceobe-task-${Date.now()}`;
+  const branchName = `ceobe-task-${Date.now()}-${crypto.randomUUID().substring(0, 6)}`;
   let worktreePath: string | null = null;
 
   if (useWorktree) {
@@ -89,58 +89,62 @@ export async function runAutonomousLoop(description: string | NormalizedContentB
     const ceobeDir = path.join(getProjectDir(), '.ceobe');
     if (!fs.existsSync(ceobeDir)) fs.mkdirSync(ceobeDir, { recursive: true });
 
-  const prefix = isFeature ? 'feature-' : '';
-  const brdPath = path.join(ceobeDir, `${prefix}brd.md`);
-  const designPath = path.join(ceobeDir, `${prefix}design.md`);
-  const archPath = path.join(ceobeDir, `${prefix}architecture.md`);
-  const taskPath = path.join(ceobeDir, `${prefix}task.md`);
-  const devopsPath = path.join(ceobeDir, `${prefix}devops.md`);
+    const prefix = isFeature ? 'feature-' : '';
+    const brdPath = path.join(ceobeDir, `${prefix}brd.md`);
+    const designPath = path.join(ceobeDir, `${prefix}design.md`);
+    const archPath = path.join(ceobeDir, `${prefix}architecture.md`);
+    const taskPath = path.join(ceobeDir, `${prefix}task.md`);
+    const devopsPath = path.join(ceobeDir, `${prefix}devops.md`);
 
-  try {
-    const startingPhase = await handleSessionResume(isFeature);
+    try {
+      const startingPhase = await handleSessionResume(isFeature);
 
-    const selectedSkills = await selectRelevantSkills(description);
-    
-    let isAuditPassed = false;
-    let retryCount = 0;
-    let feedback: string | undefined = undefined;
-    let affectedMap: AuditResult['affected'] | undefined = undefined;
+      const selectedSkills = await selectRelevantSkills(description);
+      
+      let isAuditPassed = false;
+      let retryCount = 0;
+      let feedback: string | undefined = undefined;
+      let affectedMap: AuditResult['affected'] | undefined = undefined;
 
-    let brd = '';
-    let design = '';
-    let arch = '';
-    let task = '';
-    let devops = '';
+      let brd = '';
+      let design = '';
+      let arch = '';
+      let task = '';
+      let devops = '';
 
-    // Load existing files if resuming
-    if (startingPhase !== 'plan') {
-      if (fs.existsSync(brdPath)) brd = fs.readFileSync(brdPath, 'utf8');
-      if (fs.existsSync(designPath)) design = fs.readFileSync(designPath, 'utf8');
-      if (fs.existsSync(archPath)) arch = fs.readFileSync(archPath, 'utf8');
-      if (fs.existsSync(taskPath)) task = fs.readFileSync(taskPath, 'utf8');
-      if (fs.existsSync(devopsPath)) devops = fs.readFileSync(devopsPath, 'utf8');
-      // C2: Seed snapshot registry so convergence guard has a baseline
-      computeChangedDocs({ brd, design, arch, devops, task });
-    }
+      // Load existing files if resuming
+      if (startingPhase !== 'plan') {
+        if (fs.existsSync(brdPath)) brd = fs.readFileSync(brdPath, 'utf8');
+        if (fs.existsSync(designPath)) design = fs.readFileSync(designPath, 'utf8');
+        if (fs.existsSync(archPath)) arch = fs.readFileSync(archPath, 'utf8');
+        if (fs.existsSync(taskPath)) task = fs.readFileSync(taskPath, 'utf8');
+        if (fs.existsSync(devopsPath)) devops = fs.readFileSync(devopsPath, 'utf8');
+        // C2: Seed snapshot registry so convergence guard has a baseline
+        computeChangedDocs({ brd, design, arch, devops, task });
+      }
 
-    let skipPlanning = false;
-    const stringDescription = typeof description === 'string' ? description : description.map(d => d.text).join('\n');
-    
-    if (startingPhase === 'plan' && !isFeature) {
-      const template = findMatchingTemplate(stringDescription);
-      if (template) {
-        if (askBeforeExecute) {
-           const confirmed = await askUserConfirmation(`Template matched (${template.id}). Apply it and skip planning phase?`);
-           if (confirmed) {
+      let skipPlanning = false;
+      const stringDescription = typeof description === 'string' 
+        ? description 
+        : description.filter(d => d.type === 'text' && d.text).map(d => d.text!).join('\n');
+      
+      if (startingPhase === 'plan' && !isFeature) {
+        const template = findMatchingTemplate(stringDescription);
+        if (template) {
+          if (askBeforeExecute) {
+             const confirmed = await askUserConfirmation(`Template matched (${template.id}). Apply it and skip planning phase?`);
+             if (confirmed) {
+               applyTemplate(template);
+               await markPhaseComplete('plan', 'audit');
+               skipPlanning = true;
+             }
+          } else {
              applyTemplate(template);
+             await markPhaseComplete('plan', 'audit');
              skipPlanning = true;
-           }
-        } else {
-           applyTemplate(template);
-           skipPlanning = true;
+          }
         }
       }
-    }
 
     if (!skipPlanning && (startingPhase === 'plan' || startingPhase === 'design' || startingPhase === 'audit')) {
       let regenBRD = startingPhase === 'plan';

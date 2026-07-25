@@ -49,7 +49,7 @@ function truncate(str: string, max: number): string {
 }
 
 export function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export async function startTelegramDaemon(): Promise<void> {
@@ -163,11 +163,10 @@ export async function startTelegramDaemon(): Promise<void> {
       const sendLogs = async () => {
         if (logBuffer.length === 0 || isSendingLogs) return;
         isSendingLogs = true;
-        const currentLogs = [...logBuffer];
+        const currentLogs = logBuffer.splice(0, logBuffer.length);
         const chunk = currentLogs.join('\n');
         try {
           await bot.sendMessage(chatId, `<pre><code>${escapeHtml(truncate(chunk, 3800))}</code></pre>`, { parse_mode: 'HTML' });
-          logBuffer.splice(0, currentLogs.length);
         } catch (err: any) {
           console.error(`[TelegramDaemon] Failed to send logs: ${err.message}`);
         } finally {
@@ -185,8 +184,9 @@ export async function startTelegramDaemon(): Promise<void> {
 
       const activeProject = getActiveSession(chatId);
       const projectPath = activeProject ? activeProject.projectPath : process.cwd();
+      const sessionMode = (activeProject?.mode) || getActiveMode();
 
-      await executionContext.run({ projectPath, logger: loggerFn }, async () => {
+      await executionContext.run({ projectPath, logger: loggerFn, mode: sessionMode }, async () => {
         try {
           log(`\n[TelegramDaemon] Menjalankan pipeline untuk: "${text.substring(0, 80)}..."`);
           

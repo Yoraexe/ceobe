@@ -4,13 +4,6 @@
 // Main Functions: OpenAICompatibleAdapter
 // Side Effects: Tidak ada.
 
-// Module: src/ai/providers/openAICompatibleAdapter.ts
-// Purpose: Universal adapter for any OpenAI-compatible API.
-//          Covers: GLM (Zhipu), Kimi (Moonshot), DeepSeek, Qwen, Groq, Together AI, Ollama, etc.
-// Caller: src/ai/providers/router.ts
-// Dependencies: openai, types
-// Side Effects: Makes HTTP requests to the configured base URL
-
 import OpenAI from 'openai';
 import * as crypto from 'crypto';
 import { withRetry } from '../../utils/retry';
@@ -57,7 +50,6 @@ function toOpenAIMessages(
         for (const tr of toolResults) {
           result.push({
             role: 'tool',
-            // Fix L-10: Use random UUID instead of static 'unknown' to prevent tool_call_id collisions
             tool_call_id: tr.tool_use_id || crypto.randomUUID(),
             content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
           });
@@ -87,10 +79,10 @@ function toOpenAIMessages(
           content: textBlock?.text ?? null,
           tool_calls: toolUses.length > 0
             ? toolUses.map((tu) => ({
-                id: tu.id!,
+                id: tu.id || `call_${Math.random().toString(36).substring(2, 9)}`,
                 type: 'function' as const,
                 function: {
-                  name: tu.name!,
+                  name: tu.name || 'unknown_tool',
                   arguments: JSON.stringify(tu.input ?? {}),
                 },
               }))
@@ -142,59 +134,62 @@ export class OpenAICompatibleAdapter implements IProviderAdapter {
     tools: NormalizedTool[],
     systemInstruction: string
   ): Promise<NormalizedResponse> {
-    const oaiMessages = toOpenAIMessages(messages, systemInstruction);
-    const oaiTools = toOpenAITools(tools);
+    const formattedMessages = toOpenAIMessages(messages, systemInstruction);
+    const formattedTools = tools.length > 0 ? toOpenAITools(tools) : undefined;
 
     const response = await withRetry(() =>
       this.client.chat.completions.create({
         model: this.modelId,
-        messages: oaiMessages,
-        tools: oaiTools.length > 0 ? oaiTools : undefined,
-        tool_choice: oaiTools.length > 0 ? 'auto' : undefined,
-        temperature: 0,
+        messages: formattedMessages,
+        tools: formattedTools,
+        tool_choice: formattedTools ? 'auto' : undefined,
       })
     );
 
-    const choice = response.choices?.[0];
+    const choice = response.choices[0];
     if (!choice) {
-      throw new Error("Provider returned empty choices array.");
+      throw new Error(`[${this.name}] Empty choices in response from ${this.modelId}`);
     }
-    const content: NormalizedContentBlock[] = [];
+
+    const contentBlocks: NormalizedContentBlock[] = [];
 
     if (choice.message.content) {
-      content.push({ type: 'text', text: choice.message.content });
+      contentBlocks.push({
+        type: 'text',
+        text: choice.message.content,
+      });
     }
 
     if (choice.message.tool_calls) {
-      for (const tc of choice.message.tool_calls as Array<{ id: string, function: { name: string, arguments: string } }>) {
-          let parsedInput = {};
+      for (const tc of choice.message.tool_calls) {
+        if (tc.type === 'function') {
+          let parsedInput: Record<string, unknown> = {};
           try {
             parsedInput = JSON.parse(tc.function.arguments || '{}');
-          } catch (e: any) {
-            // Fix M-23: Throw error on malformed JSON instead of silently packaging it
-            throw new Error(`[OpenAIAdapter] Malformed JSON in tool arguments for ${tc.function.name}: ${tc.function.arguments}`);
+          } catch {
+            parsedInput = { _raw: tc.function.arguments };
           }
-          content.push({
+          contentBlocks.push({
             type: 'tool_use',
             id: tc.id,
             name: tc.function.name,
             input: parsedInput,
           });
+        }
       }
     }
 
-    const finishReason = choice.finish_reason;
-    const stopReason =
-      finishReason === 'tool_calls'
-        ? 'tool_use'
-        : finishReason === 'length'
-        ? 'max_tokens'
-        : 'end_turn';
+    let stopReason: 'tool_use' | 'end_turn' | 'max_tokens' | 'error' = 'end_turn';
+    if (choice.finish_reason === 'tool_calls') stopReason = 'tool_use';
+    else if (choice.finish_reason === 'length') stopReason = 'max_tokens';
 
-    return { 
-      content, 
+    return {
+      content: contentBlocks,
       stop_reason: stopReason,
-      usage: response.usage ? { input_tokens: response.usage.prompt_tokens, output_tokens: response.usage.completion_tokens } : undefined
+      usage: {
+        input_tokens: response.usage?.prompt_tokens,
+        output_tokens: response.usage?.completion_tokens,
+      },
     };
   }
 }

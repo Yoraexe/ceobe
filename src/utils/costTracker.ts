@@ -70,6 +70,11 @@ export function resetSession(): void {
   arr.length = 0; // Clears the array in place
 }
 
+export function clearGlobalUsage(): void {
+  const arr = getSessionUsageArray();
+  arr.length = 0;
+}
+
 export function recordUsage(usage: TokenUsage): void {
   if (Number.isNaN(usage.inputTokens) || typeof usage.inputTokens !== 'number') usage.inputTokens = 0;
   if (Number.isNaN(usage.outputTokens) || typeof usage.outputTokens !== 'number') usage.outputTokens = 0;
@@ -120,7 +125,7 @@ export function getCostSummary(): string {
   
   const pricingMap = getPricing();
   const hasUnknownModel = sessionUsage.some(usage => {
-    return !Object.keys(pricingMap).some(k => usage.model.toLowerCase().includes(k));
+    return !Object.keys(pricingMap).some(k => usage.model.toLowerCase().startsWith(k));
   });
 
   const costStr = hasUnknownModel ? `$${totalCost.toFixed(4)}+` : `$${totalCost.toFixed(4)}`;

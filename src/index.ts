@@ -56,5 +56,17 @@ program.action(async () => {
   printHelp(true);
 });
 
+// Global Exception Handlers
+process.on('unhandledRejection', (reason: unknown) => {
+  const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+  console.error('\n❌ [Fatal Unhandled Rejection]:', msg);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err: Error) => {
+  console.error('\n❌ [Fatal Uncaught Exception]:', err.stack || err.message);
+  process.exit(1);
+});
+
 // Parse args
 program.parse(process.argv);

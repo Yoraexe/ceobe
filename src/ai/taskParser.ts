@@ -32,7 +32,7 @@ function hasDependencyKeyword(text: string): boolean {
     'after completing', 'after the', 'when the task', 'dependent on',
     'setelah task', 'setelah selesai', 'membutuhkan', 'bergantung pada', 'integrasi dengan',
   ];
-  return DEPENDENCY_SIGNALS.some(sig => new RegExp(`(?:^|\\s)${sig.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\$&')}(?=\\s|$)`, 'i').test(text));
+  return DEPENDENCY_SIGNALS.some(sig => new RegExp(`(?:^|\\s)${sig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'i').test(text));
 }
 
 /**
@@ -45,7 +45,7 @@ function isAlwaysParallel(text: string): boolean {
     'write unit test', 'add unit test', 'unit tests', 'write test', 'add test',
     'dokumentasi', 'dokumen', 'tulis test',
   ];
-  return INDEPENDENT_SIGNALS.some(sig => new RegExp(`(?:^|\\s)${sig.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\$&')}(?=\\s|$)`, 'i').test(text));
+  return INDEPENDENT_SIGNALS.some(sig => new RegExp(`(?:^|\\s)${sig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'i').test(text));
 }
 
 /**
@@ -63,12 +63,36 @@ function isAlwaysParallel(text: string): boolean {
  * @param taskMarkdown  Raw content of .ceobe/task.md
  * @returns Array of TaskWave objects ordered by execution sequence.
  */
+const MIN_BLOCK_LENGTH = 10;
+
 export function parseTaskWaves(taskMarkdown: string): TaskWave[] {
   // Split on markdown heading patterns (## Task, ### Step, - [ ] item, numbered lists)
-  const rawTasks = taskMarkdown
+  const initialBlocks = taskMarkdown
     .split(/\n(?=#{1,3}\s|\d+\.\s|\-\s\[)/)
     .map(block => block.trim())
-    .filter(block => block.length > 10); // Skip empty / very short blocks
+    .filter(block => block.length > 0);
+
+  // Fix M-06: Merge blocks that were split inside code blocks (odd number of ```)
+  const rawTasks: string[] = [];
+  let currentBlock = '';
+
+  for (const block of initialBlocks) {
+    if (currentBlock) {
+      currentBlock += '\n\n' + block;
+    } else {
+      currentBlock = block;
+    }
+    const backtickCount = (currentBlock.match(/```/g) || []).length;
+    if (backtickCount % 2 === 0) {
+      if (currentBlock.trim().length > MIN_BLOCK_LENGTH) {
+        rawTasks.push(currentBlock.trim());
+      }
+      currentBlock = '';
+    }
+  }
+  if (currentBlock.trim().length > MIN_BLOCK_LENGTH) {
+    rawTasks.push(currentBlock.trim());
+  }
 
   if (rawTasks.length === 0) {
     // No structured tasks found — treat entire plan as a single task
@@ -115,14 +139,16 @@ export function parseTaskWaves(taskMarkdown: string): TaskWave[] {
   const categorize = (task: TaskItem): number => {
     const lower = (task.title + ' ' + task.content).toLowerCase();
     if (isAlwaysParallel(lower)) return 3;
+    let wave = 1;
+    if (FOUNDATION_SIGNALS.some(s => lower.includes(s))) wave = 0;
+    else if (CORE_SIGNALS.some(s => lower.includes(s))) wave = 1;
+    else if (INTEGRATION_SIGNALS.some(s => lower.includes(s))) wave = 2;
+
     if (hasDependencyKeyword(lower)) {
-      if (INTEGRATION_SIGNALS.some(s => lower.includes(s))) return 2;
-      return 1;
+      wave = Math.max(wave, 1);
+      if (INTEGRATION_SIGNALS.some(s => lower.includes(s))) wave = Math.max(wave, 2);
     }
-    if (FOUNDATION_SIGNALS.some(s => lower.includes(s))) return 0;
-    if (CORE_SIGNALS.some(s => lower.includes(s))) return 1;
-    if (INTEGRATION_SIGNALS.some(s => lower.includes(s))) return 2;
-    return 1; // Default: core layer
+    return wave;
   };
 
   // Group by wave

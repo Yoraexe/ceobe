@@ -32,6 +32,9 @@ export class GeminiAdapter implements IProviderAdapter {
   }
 
   private getClient(): Record<string, unknown> {
+    if (!env.GEMINI_API_KEY?.trim()) {
+      throw new Error('[GeminiAdapter] GEMINI_API_KEY is not set in environment or config.');
+    }
     if (!this.client) {
       const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: 'v1beta' });
       this.client = genAI.models;
@@ -144,13 +147,15 @@ export class GeminiAdapter implements IProviderAdapter {
         stopReason = 'max_tokens';
       } else if (candidate.finishReason && !['STOP', 'MAX_TOKENS'].includes(candidate.finishReason)) {
         if (candidate.finishReason === 'SAFETY') {
-          throw new Error('[Gemini Safety Filter] The model response was blocked due to safety policies.'); // Fix H-18
+          throw new Error('[Gemini Safety Filter] The model response was blocked due to safety policies.');
         }
-        // Fix M-22: Throw error instead of swallowing it into text output
         throw new Error(`[Gemini Error] Stopped due to unexpected finish reason: ${candidate.finishReason}`);
       }
       
       const parts = candidate.content?.parts || [];
+      if (parts.length === 0 && candidate.finishReason !== 'STOP') {
+        throw new Error(`[Gemini Error] Candidate response contained no content parts (finishReason: ${candidate.finishReason || 'UNKNOWN'}).`);
+      }
       for (const p of parts) {
         if (p.text) {
           responseContent.push({ type: 'text', text: p.text });
@@ -159,7 +164,6 @@ export class GeminiAdapter implements IProviderAdapter {
           stopReason = 'tool_use';
           responseContent.push({
             type: 'tool_use',
-            // Fix L-09: Do not truncate UUID to prevent collision risk
             id: p.functionCall.name + '_' + crypto.randomUUID(),
             name: p.functionCall.name,
             input: p.functionCall.args || {}
@@ -168,6 +172,9 @@ export class GeminiAdapter implements IProviderAdapter {
       }
     } else {
       const text = typeof res.text === 'function' ? res.text() : (res.text || '');
+      if (!text && !res.candidates) {
+        throw new Error('[Gemini Error] Empty response returned by Gemini API with no valid candidate blocks.');
+      }
       responseContent.push({ type: 'text', text });
     }
 

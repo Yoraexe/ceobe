@@ -40,7 +40,8 @@ export function writeAllKeys(keys: Record<string, string>): void {
   
   if (os.platform() === 'win32') {
     try {
-      execFileSync('icacls', [filePath, '/inheritance:r', '/grant:r', `${process.env.USERNAME}:F`], { stdio: 'ignore' });
+      const username = process.env.USERNAME || process.env.USER || 'Everyone';
+      execFileSync('icacls', [filePath, '/inheritance:r', '/grant:r', `${username}:F`], { stdio: 'ignore' });
     } catch {
       // Silently ignore if icacls fails
     }
@@ -52,6 +53,9 @@ export function getKey(name: string): string {
 }
 
 export function setKey(name: string, value: string): void {
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+    throw new Error(`Invalid key name '${name}'. Key names can only contain alphanumeric characters, hyphens, and underscores.`);
+  }
   const keys = readAllKeys();
   keys[name] = value;
   writeAllKeys(keys);

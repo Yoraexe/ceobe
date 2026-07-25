@@ -11,11 +11,12 @@ import { inspect } from 'util';
 export interface CeobeContext {
   projectPath: string;
   logger?: (msg: string) => void;
-  confirmationBridge?: any;
-  sessionUsage?: any[];
-  snapshots?: Map<string, { hash: string; timestamp: number; version: number; }>;
-  stateCache?: any;
-  configCache?: any;
+  confirmationBridge?: { requestConfirmation: (summary: string) => Promise<boolean> };
+  sessionUsage?: Array<{ model: string; inputTokens: number; outputTokens: number }>;
+  snapshots?: Map<string, { hash: string; timestamp: number; version: number }>;
+  stateCache?: unknown;
+  configCache?: unknown;
+  mode?: 'autonomous' | 'ask';
 }
 
 export const executionContext = new AsyncLocalStorage<CeobeContext>();

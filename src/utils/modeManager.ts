@@ -8,9 +8,10 @@ import { getProjectDir, executionContext } from './context';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
-
-
 import chalk from 'chalk';
+import lockfile from 'proper-lockfile';
+import * as crypto from 'crypto';
+
 
 // ─────────────────────────────────────────────
 // Types
@@ -54,14 +55,8 @@ export function setConfirmationBridge(bridge: ConfirmationBridge): void {
 export function clearConfirmationBridge(): void {
   const ctx = executionContext.getStore();
   if (ctx) {
-    if (ctx.confirmationBridge?.destroy) {
-      ctx.confirmationBridge.destroy();
-    }
     ctx.confirmationBridge = undefined;
   } else {
-    if (activeConfirmationBridge?.destroy) {
-      activeConfirmationBridge.destroy();
-    }
     activeConfirmationBridge = null;
   }
 }
@@ -108,18 +103,26 @@ export function clearConfigCacheForTesting(): void {
 export function readConfig(): CeobeConfig {
   const ctx = executionContext.getStore();
   const cached = ctx ? ctx.configCache : globalCachedConfig;
-  if (cached) return cached;
+  if (cached) return cached as CeobeConfig;
   
   const configPath = getConfigPath();
   let loadedConfig: CeobeConfig;
   
   if (!fs.existsSync(configPath)) {
-    loadedConfig = { mode: 'ask', worktree: false, updatedAt: new Date().toISOString() }; // Fix M-08: Secure default mode
+    loadedConfig = { mode: 'ask', worktree: false, updatedAt: new Date().toISOString() };
   } else {
     try {
-      loadedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CeobeConfig;
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      // Fix M-28: Validate schema on parsed config JSON
+      const validMode = (parsed && (parsed.mode === 'autonomous' || parsed.mode === 'ask')) ? parsed.mode : 'ask';
+      const validWorktree = (parsed && typeof parsed.worktree === 'boolean') ? parsed.worktree : false;
+      loadedConfig = {
+        mode: validMode,
+        worktree: validWorktree,
+        updatedAt: typeof parsed?.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString()
+      };
     } catch {
-      loadedConfig = { mode: 'ask', worktree: false, updatedAt: new Date().toISOString() }; // Fix M-08: Secure default mode
+      loadedConfig = { mode: 'ask', worktree: false, updatedAt: new Date().toISOString() };
     }
   }
   
@@ -133,22 +136,41 @@ export function writeConfig(config: CeobeConfig): void {
   const configPath = getConfigPath();
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  
-  const tmpPath = `${configPath}.${Date.now()}.tmp`;
-  // Fix L-02: Ensure config file has restrictive permissions (read/write only by owner)
-  fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
-  fs.renameSync(tmpPath, configPath);
-  
-  const ctx = executionContext.getStore();
-  if (ctx) ctx.configCache = config;
-  else globalCachedConfig = config;
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(configPath, JSON.stringify({ mode: 'ask', worktree: false, updatedAt: new Date().toISOString() }, null, 2), { encoding: 'utf8', mode: 0o600 });
+  }
+
+  let release: (() => void) | undefined;
+  try {
+    release = lockfile.lockSync(configPath, { retries: { retries: 5, minTimeout: 50, maxTimeout: 500 } });
+  } catch {
+    // proceed if lock cannot be acquired
+  }
+
+  try {
+    const tmpPath = `${configPath}.${crypto.randomUUID()}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tmpPath, configPath);
+    
+    const ctx = executionContext.getStore();
+    if (ctx) ctx.configCache = config;
+    else globalCachedConfig = config;
+  } finally {
+    if (release) release();
+  }
 }
 
 export function getActiveMode(): CeobeMode {
+  const ctx = executionContext.getStore();
+  if (ctx && ctx.mode) return ctx.mode;
   return readConfig().mode;
 }
 
 export function setMode(mode: CeobeMode): void {
+  const ctx = executionContext.getStore();
+  if (ctx) {
+    ctx.mode = mode;
+  }
   const current = readConfig();
   writeConfig({ ...current, mode, updatedAt: new Date().toISOString() });
 }
@@ -212,13 +234,15 @@ export async function confirmToolCall(
     summary = `🔧 ${toolName}: ${JSON.stringify(input).substring(0, 80)}`;
   }
 
-  // Jika ada bridge aktif (misal dari Telegram), delegasikan ke bridge tersebut
+  return askUserConfirmation(summary);
+}
+
+export async function askUserConfirmation(summary: string): Promise<boolean> {
   const bridge = getConfirmationBridge();
   if (bridge) {
     return bridge.requestConfirmation(summary);
   }
 
-  // Fallback: gunakan terminal standar (readline)
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve, reject) => {
     console.log('\n' + chalk.bgYellow.black(' KONFIRMASI DIPERLUKAN '));
@@ -229,17 +253,22 @@ export async function confirmToolCall(
       reject(new Error('USER_ABORT: Sesi dihentikan oleh pengguna (SIGINT).'));
     });
 
-    rl.question(
-      chalk.yellow('\nSetuju? [y] Ya / [n] Lewati / [a] Batalkan semua: '),
-      (answer) => {
-        rl.close();
-        const ans = answer.trim().toLowerCase();
-        if (ans === 'a' || ans === 'abort') {
-          reject(new Error('USER_ABORT: Sesi dihentikan oleh pengguna.'));
-        } else {
-          resolve(ans === 'y' || ans === 'yes' || ans === 'ya');
+    try {
+      rl.question(
+        chalk.yellow('\nSetuju? [y] Ya / [n] Lewati / [a] Batalkan semua: '),
+        (answer) => {
+          rl.close();
+          const ans = answer.trim().toLowerCase();
+          if (ans === 'a' || ans === 'abort') {
+            reject(new Error('USER_ABORT: Sesi dihentikan oleh pengguna.'));
+          } else {
+            resolve(ans === 'y' || ans === 'yes' || ans === 'ya');
+          }
         }
-      }
-    );
+      );
+    } catch (err) {
+      rl.close();
+      reject(err);
+    }
   });
 }

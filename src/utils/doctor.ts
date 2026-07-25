@@ -21,15 +21,15 @@ export async function runDoctor(): Promise<void> {
   console.log(chalk.bold.cyan('\n🩺 Ceobe Diagnostic Tool\n'));
 
   // 0. Show active provider configuration
-  const rawPlanner = process.env.CEOBE_PLANNER_PROVIDER || '';
-  const rawExecutor = process.env.CEOBE_EXECUTOR_PROVIDER || '';
+  const rawPlanner = env.CEOBE_PLANNER_PROVIDER || process.env.CEOBE_PLANNER_PROVIDER || '';
+  const rawExecutor = env.CEOBE_EXECUTOR_PROVIDER || process.env.CEOBE_EXECUTOR_PROVIDER || '';
   
   const plannerProvider = rawPlanner || rawExecutor || '(not set)';
   const executorProvider = rawExecutor || rawPlanner || '(not set)';
   
-  const plannerModel = process.env.CEOBE_PLANNER_MODEL || '(default model)';
-  const executorModel = process.env.CEOBE_EXECUTOR_MODEL || '(default model)';
-  const embeddingProvider = process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider;
+  const plannerModel = env.CEOBE_PLANNER_MODEL || process.env.CEOBE_PLANNER_MODEL || '(default model)';
+  const executorModel = env.CEOBE_EXECUTOR_MODEL || process.env.CEOBE_EXECUTOR_MODEL || '(default model)';
+  const embeddingProvider = env.CEOBE_EMBEDDING_PROVIDER || process.env.CEOBE_EMBEDDING_PROVIDER || plannerProvider;
 
   console.log(chalk.bold('0. Active Provider Configuration:'));
   console.log(`  ${chalk.cyan('Planner  ')}  →  ${chalk.white(plannerProvider)} / ${chalk.gray(plannerModel)}`);
@@ -46,8 +46,8 @@ export async function runDoctor(): Promise<void> {
   for (const envKey of requiredEnvKeys) {
     const def = KEY_DEFINITIONS.find(d => d.envKey === envKey);
     const label = def?.label || envKey;
-    const value = storedKeys[envKey] || process.env[envKey];
-    if (!value) {
+    const isConfigured = Boolean(storedKeys[envKey] || process.env[envKey]);
+    if (!isConfigured) {
       console.log(chalk.red(`  ✗ ${label} (${envKey}) is MISSING — required for your active provider.`));
       console.log(chalk.yellow(`    Fix: ceobe key set ${def?.provider || envKey.toLowerCase().replace('_api_key', '')} <your-key>`));
       keysOk = false;

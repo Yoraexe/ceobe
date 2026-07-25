@@ -54,7 +54,7 @@ export function clearStateCache(): void {
 export async function readState(): Promise<CeobeState | null> {
   const ctx = executionContext.getStore();
   const cached = ctx ? ctx.stateCache : globalCachedState;
-  if (cached) return cached;
+  if (cached) return cached as CeobeState;
   
   const statePath = getStateFilePath();
   if (!fs.existsSync(statePath)) {
@@ -97,11 +97,13 @@ export async function writeState(state: Partial<CeobeState> | ((currentState: Ce
     // Ignore if directory exists
   }
 
-  // Touch the file if it doesn't exist so proper-lockfile has something to lock (atomic wx flag)
-  try {
-    await fs.promises.writeFile(statePath, JSON.stringify({ currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() }), { flag: 'wx', encoding: 'utf8' });
-  } catch (err) {
-    // Ignore if file already exists (EEXIST)
+  // Ensure statePath file exists so proper-lockfile can lock it
+  if (!fs.existsSync(statePath)) {
+    try {
+      fs.writeFileSync(statePath, JSON.stringify({ currentPhase: 'plan', completedPhases: [], completedFiles: [], lastUpdated: new Date().toISOString() }), 'utf8');
+    } catch {
+      // Ignore
+    }
   }
 
   // Acquire proper file lock with exponential backoff retries, preventing CPU spin locking
@@ -111,9 +113,12 @@ export async function writeState(state: Partial<CeobeState> | ((currentState: Ce
       retries: { retries: 10, minTimeout: 100, maxTimeout: 1000 },
       stale: 10000 // Lock auto-expires if process crashes
     });
-  } catch (err) {
-    log(chalk.yellow(`Could not acquire state lock, proceeding anyway: ${(err as Error).message}`));
-    release = async () => {};
+  } catch (err: any) {
+    if (err && (err.code === 'ENOENT' || String(err).includes('ENOENT'))) {
+      release = async () => {};
+    } else {
+      throw new Error(`[StateManager] Failed to acquire lock for writing state file: ${(err as Error).message}`);
+    }
   }
 
   try {
@@ -134,7 +139,7 @@ export async function writeState(state: Partial<CeobeState> | ((currentState: Ce
     };
     
     // Atomic write via temp file
-    const tempPath = statePath + '.tmp.' + Math.random().toString(36).substring(2);
+    const tempPath = statePath + '.tmp.' + crypto.randomUUID();
     await fs.promises.writeFile(tempPath, JSON.stringify(newState, null, 2), 'utf8');
     await fs.promises.rename(tempPath, statePath);
 

@@ -53,7 +53,7 @@ export class AnthropicAdapter implements IProviderAdapter {
       : (prompt as NormalizedContentBlock[]).map((block, index) => {
           let outBlock: Record<string, unknown> = { type: 'text', text: '' };
           if (block.type === 'text') outBlock = { type: 'text', text: block.text };
-          if (block.type === 'image' && block.source) {
+          else if (block.type === 'image' && block.source) {
             outBlock = {
               type: 'image',
               source: {
@@ -62,10 +62,12 @@ export class AnthropicAdapter implements IProviderAdapter {
                 data: block.source.data,
               }
             };
+          } else {
+            outBlock = { ...block };
           }
           
           if (block.cache_control || (hasExplicitCache && index === prompt.length - 1)) {
-            outBlock.cache_control = { type: 'ephemeral' }; // Fix L-06: Strict type for cache_control
+            outBlock.cache_control = { type: 'ephemeral' };
           }
           return outBlock as any;
         });
@@ -73,7 +75,7 @@ export class AnthropicAdapter implements IProviderAdapter {
     const response = await withRetry(() =>
       this.client.messages.create({
         model: this.modelId,
-        max_tokens: env.CEOBE_MAX_TOKENS,
+        max_tokens: (env.CEOBE_MAX_TOKENS && env.CEOBE_MAX_TOKENS > 0) ? env.CEOBE_MAX_TOKENS : 16384,
         temperature,
         messages: [{ role: 'user', content }] as Anthropic.MessageParam[],
       })
